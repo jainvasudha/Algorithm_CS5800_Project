@@ -7,3 +7,4 @@ build/
 .env
 .venv/
 venv/
+PROJECT_MASTER_DOCUMENT.md
