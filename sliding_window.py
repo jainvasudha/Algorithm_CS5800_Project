@@ -1,15 +1,14 @@
 from collections import deque
 
-window_size = 3
 window = deque()
 freq = {}
 
-def add_event(timestamp, keyword):
+def add_event(timestamp, keyword, window_size):
     window.append((timestamp, keyword))
     freq[keyword] = freq.get(keyword, 0) + 1
-    remove_expired(timestamp)
+    remove_expired(timestamp, window_size)
 
-def remove_expired(current_time):
+def remove_expired(current_time, window_size):
     while window and window[0][0] <= current_time - window_size:
         old_timestamp, old_keyword = window.popleft()
         freq[old_keyword] -= 1
