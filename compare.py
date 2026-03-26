@@ -14,7 +14,7 @@ window_size = 3
 
 # run sliding window
 for timestamp, keyword in events:
-    add_event(timestamp, keyword)
+    add_event(timestamp, keyword, window_size)
 
 sliding_result = dict(freq)
 
