@@ -18,17 +18,20 @@ def remove_expired(current_time, window_size):
 def get_frequencies():
     return dict(freq)
 
-add_event(1, "jeans")
-print(get_frequencies())
+if __name__ == "__main__":
+    window_size = 3
 
-add_event(2, "tops")
-print(get_frequencies())
+    add_event(1, "jeans", window_size)
+    print(get_frequencies())
 
-add_event(3, "jeans")
-print(get_frequencies())
+    add_event(2, "tops", window_size)
+    print(get_frequencies())
 
-add_event(4, "shoes")
-print(get_frequencies())
+    add_event(3, "jeans", window_size)
+    print(get_frequencies())
 
-add_event(5, "tops")
-print(get_frequencies())
+    add_event(4, "shoes", window_size)
+    print(get_frequencies())
+
+    add_event(5, "tops", window_size)
+    print(get_frequencies())
