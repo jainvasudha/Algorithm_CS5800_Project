@@ -19,13 +19,12 @@ def test_window_matches_baseline():
     window_size = 3
 
     for timestamp, keyword in events:
-    add_event(timestamp, keyword, window_size)
+        add_event(timestamp, keyword, window_size)
 
     sliding_result = dict(freq)
     baseline_result = compute_baseline(events, current_time=5, window_size=window_size)
 
     assert sliding_result == baseline_result
-
 
 test_window_matches_baseline()
 print("Test passed successfully")
