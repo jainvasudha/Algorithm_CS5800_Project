@@ -1,0 +1,141 @@
+"""
+Tests for cycle detection and trend classification.
+"""
+
+import pytest
+from cycle_detection import cosine_similarity, find_best_match, compute_slope, classify_trend
+
+
+# -- cosine similarity --
+
+class TestCosine:
+    def test_identical(self):
+        v = [10, 20, 30, 40, 50]
+        assert cosine_similarity(v, v) == pytest.approx(1.0)
+
+    def test_scaled_vector(self):
+        # [1,2,3] and [2,4,6] point same direction, should be 1.0
+        assert cosine_similarity([1, 2, 3], [2, 4, 6]) == pytest.approx(1.0)
+
+    def test_orthogonal(self):
+        assert cosine_similarity([1, 0, 0], [0, 1, 0]) == pytest.approx(0.0)
+
+    def test_zero_vector(self):
+        assert cosine_similarity([0, 0, 0], [1, 2, 3]) == 0.0
+
+    def test_both_zero(self):
+        assert cosine_similarity([0, 0], [0, 0]) == 0.0
+
+    def test_empty(self):
+        assert cosine_similarity([], [1, 2]) == 0.0
+        assert cosine_similarity([], []) == 0.0
+
+    def test_different_lengths(self):
+        # should truncate to shorter and still work
+        assert cosine_similarity([1, 2, 3, 4, 5], [1, 2, 3]) == pytest.approx(1.0)
+
+    def test_cyclical_patterns(self):
+        a = [10, 50, 10, 50, 10]
+        b = [12, 48, 11, 52, 9]
+        assert cosine_similarity(a, b) > 0.99
+
+    def test_rising_vs_falling(self):
+        # both positive so not orthogonal, but should be < 1
+        assert cosine_similarity([10, 20, 30, 40, 50], [50, 40, 30, 20, 10]) < 0.9
+
+    def test_range_check(self):
+        sim = cosine_similarity([3, 7, 1, 9], [5, 2, 8, 4])
+        assert 0.0 <= sim <= 1.0
+
+
+# -- best match --
+
+class TestBestMatch:
+    def test_matches_cyclical(self):
+        hist = {
+            "cyclical": [10, 50, 10, 50, 10],
+            "rising":   [10, 20, 30, 40, 50],
+            "fading":   [50, 40, 30, 20, 10],
+        }
+        match, sim = find_best_match([12, 48, 11, 52, 9], hist)
+        assert match == "cyclical"
+        assert sim > 0.99
+
+    def test_empty_db(self):
+        assert find_best_match([1, 2, 3], {}) == ("", 0.0)
+
+    def test_empty_vector(self):
+        assert find_best_match([], {"a": [1, 2]}) == ("", 0.0)
+
+    def test_single_entry(self):
+        match, sim = find_best_match([2, 4, 6], {"only": [1, 2, 3]})
+        assert match == "only"
+        assert sim == pytest.approx(1.0)
+
+
+# -- slope --
+
+class TestSlope:
+    def test_upward(self):
+        assert compute_slope([10, 20, 30, 40, 50]) > 0
+
+    def test_downward(self):
+        assert compute_slope([50, 40, 30, 20, 10]) < 0
+
+    def test_flat(self):
+        assert compute_slope([30, 30, 30, 30]) == pytest.approx(0.0)
+
+    def test_single_value(self):
+        assert compute_slope([42]) == 0.0
+
+    def test_empty(self):
+        assert compute_slope([]) == 0.0
+
+    def test_two_points(self):
+        assert compute_slope([10, 20]) == pytest.approx(10.0)
+
+    def test_linear(self):
+        # y = 5 + 3x -> slope should be 3
+        assert compute_slope([5, 8, 11, 14, 17]) == pytest.approx(3.0)
+
+
+# -- classification --
+
+class TestClassify:
+    def test_fading(self):
+        label = classify_trend("skinny jeans", burst_score=0.15,
+                               cosine_sim=0.3, freq_trajectory=[80, 60, 40, 25, 12])
+        assert label == "Fading"
+
+    def test_cyclical(self):
+        label = classify_trend("cargo pants", burst_score=1.1,
+                               cosine_sim=0.95, freq_trajectory=[10, 50, 10, 50, 45])
+        assert label == "Cyclical"
+
+    def test_new_burst(self):
+        label = classify_trend("Y2K fashion", burst_score=4.6,
+                               cosine_sim=0.2, freq_trajectory=[5, 10, 30, 60, 92])
+        assert label == "New"
+
+    def test_new_growing(self):
+        label = classify_trend("wide-leg jeans", burst_score=1.5,
+                               cosine_sim=0.4, freq_trajectory=[20, 35, 50, 65, 78])
+        assert label == "New"
+
+    def test_decline_beats_high_similarity(self):
+        # even if cosine_sim is high, a steep decline should still be Fading
+        label = classify_trend("retro", burst_score=0.5,
+                               cosine_sim=0.9, freq_trajectory=[100, 70, 40, 20, 5])
+        assert label == "Fading"
+
+    def test_flat_defaults_to_fading(self):
+        label = classify_trend("neutral", burst_score=0.8,
+                               cosine_sim=0.3, freq_trajectory=[30, 30, 30, 30])
+        assert label == "Fading"
+
+    def test_custom_thresholds(self):
+        # lowering cyclical_threshold should flip this to Cyclical
+        label = classify_trend("test", burst_score=1.0, cosine_sim=0.5,
+                               freq_trajectory=[30, 30, 30, 30],
+                               cyclical_threshold=0.4)
+        assert label == "Cyclical"
