@@ -1,108 +1,107 @@
 """
-Module B-2: Burst Detection
-Owner: Vasudha Jain
+burst_detection.py — Detects keywords with sudden popularity spikes.
 
-Detects sudden spikes in keyword popularity by comparing frequencies
-across two consecutive time windows.
+Two scoring methods:
+  - Ratio:      burst_score = current / max(previous, 1)
+  - Difference: burst_score = current - previous
 
-Two scoring approaches:
-  - Ratio:      current / previous  (good for relative growth)
-  - Difference: current - previous  (good for absolute growth)
-
-Time:  O(M) to score all keywords + O(M log K) for top-K extraction
-Space: O(M) for the scores
+Complexity:
+  Time:  O(M) for scoring, O(M log M) if sorted
+  Space: O(M)
 """
 
-import heapq
+from config import BURST_THRESHOLD_RATIO, BURST_THRESHOLD_DIFF, DEFAULT_BURST_METHOD
 
 
-def _ratio_score(current, previous):
-    """Ratio-based burst score."""
-    if previous > 0:
-        return current / previous
-    elif current > 0:
-        # brand new keyword — treat raw count as the score
-        return float(current)
-    return 0.0
-
-
-def _diff_score(current, previous):
-    """Difference-based burst score."""
-    return float(current - previous)
-
-
-def detect_bursts(current_freq, previous_freq, k, threshold=2.0, method="ratio"):
+def detect_bursts(current_freq, previous_freq, threshold=None,
+                  method=DEFAULT_BURST_METHOD, top_k=None):
     """
-    Find the top-K keywords with the highest burst scores.
+    Compare two frequency maps and return keywords whose burst score
+    exceeds the threshold.
 
-    Goes through each keyword in current_freq, computes burst score
-    vs previous window, filters by threshold, then uses a min-heap
-    to grab the top K.
+    Args:
+        current_freq:  dict[str, int]
+        previous_freq: dict[str, int]
+        threshold:     float
+        method:        "ratio" or "difference"
+        top_k:         int or None
 
-    Returns list of (keyword, score) sorted descending by score.
-
-    Time:  O(M) + O(B log K) where B = number that pass threshold
-    Space: O(K) for the heap
+    Returns:
+        list[tuple[str, float]] sorted descending by score
     """
-    if k <= 0 or not current_freq:
-        return []
+    if threshold is None:
+        threshold = (BURST_THRESHOLD_RATIO if method == "ratio"
+                     else BURST_THRESHOLD_DIFF)
 
+    all_keywords = set(current_freq) | set(previous_freq)
+    bursts = []
+
+    for keyword in all_keywords:
+        current = current_freq.get(keyword, 0)
+        previous = previous_freq.get(keyword, 0)
+        score = _compute_score(current, previous, method)
+        if score > threshold:
+            bursts.append((keyword, score))
+
+    bursts.sort(key=lambda x: x[1], reverse=True)
+
+    if top_k is not None:
+        bursts = bursts[:top_k]
+
+    return bursts
+
+
+def detect_bursts_ratio(current_freq, previous_freq, threshold=None, top_k=None):
+    if threshold is None:
+        threshold = BURST_THRESHOLD_RATIO
+    return detect_bursts(current_freq, previous_freq, threshold, "ratio", top_k)
+
+
+def detect_bursts_difference(current_freq, previous_freq, threshold=None, top_k=None):
+    if threshold is None:
+        threshold = BURST_THRESHOLD_DIFF
+    return detect_bursts(current_freq, previous_freq, threshold, "difference", top_k)
+
+
+def _compute_score(current, previous, method):
     if method == "ratio":
-        score_fn = _ratio_score
+        return current / max(previous, 1)
     elif method == "difference":
-        score_fn = _diff_score
+        return current - previous
     else:
-        raise ValueError(f"Unknown method '{method}'. Use 'ratio' or 'difference'.")
+        raise ValueError(f"Unknown method: {method!r}. Use 'ratio' or 'difference'.")
 
-    # score each keyword and keep top K using a min-heap
-    heap = []
 
-    for keyword, count in current_freq.items():
-        prev = previous_freq.get(keyword, 0)
-        score = score_fn(count, prev)
+def sweep_thresholds(current_freq, previous_freq, ground_truth,
+                     thresholds, method="ratio"):
+    """Sweep thresholds and compute detection/false-positive rates."""
+    total_true = len(ground_truth)
+    total_non_burst = len(set(current_freq) | set(previous_freq)) - total_true
 
-        if score < threshold:
-            continue
-
-        if len(heap) < k:
-            heapq.heappush(heap, (score, keyword))
-        elif (score, keyword) > heap[0]:
-            heapq.heapreplace(heap, (score, keyword))
-
-    # pop everything out and reverse for descending order
-    result = []
-    while heap:
-        score, kw = heapq.heappop(heap)
-        result.append((kw, score))
-    result.reverse()
-
-    return result
+    results = []
+    for t in thresholds:
+        detected = detect_bursts(current_freq, previous_freq, threshold=t, method=method)
+        detected_keywords = {kw for kw, _ in detected}
+        tp = len(detected_keywords & ground_truth)
+        fp = len(detected_keywords - ground_truth)
+        results.append({
+            "threshold": t,
+            "true_positives": tp,
+            "false_positives": fp,
+            "detection_rate": tp / total_true if total_true > 0 else 0.0,
+            "false_positive_rate": fp / total_non_burst if total_non_burst > 0 else 0.0,
+        })
+    return results
 
 
 if __name__ == "__main__":
-    # quick demo with made-up data
-    previous = {
-        "wide-leg jeans": 30, "cargo pants": 40,
-        "skinny jeans": 80, "Y2K fashion": 5,
-        "mom jeans": 35, "baggy jeans": 20,
-    }
+    prev = {"jeans": 10, "cargo": 20, "Y2K": 2, "mom": 50}
+    curr = {"jeans": 12, "cargo": 22, "Y2K": 40, "mom": 48, "corset": 30}
 
-    current = {
-        "wide-leg jeans": 78, "cargo pants": 45,
-        "skinny jeans": 12, "Y2K fashion": 92,
-        "mom jeans": 34, "baggy jeans": 67,
-        "corset top": 55,  # new keyword
-    }
+    print("Ratio scoring:")
+    for kw, score in detect_bursts_ratio(curr, prev, threshold=1.5):
+        print(f"  {kw}: {score:.2f}")
 
-    K = 5
-
-    print("Previous:", previous)
-    print("Current: ", current)
-
-    print(f"\nRatio method (threshold=2.0, K={K}):")
-    for rank, (kw, score) in enumerate(detect_bursts(current, previous, K, 2.0, "ratio"), 1):
-        print(f"  #{rank}  {kw:<20} score={score:.2f}")
-
-    print(f"\nDifference method (threshold=10, K={K}):")
-    for rank, (kw, score) in enumerate(detect_bursts(current, previous, K, 10, "difference"), 1):
-        print(f"  #{rank}  {kw:<20} score={score:.1f}")
+    print("\nDifference scoring:")
+    for kw, score in detect_bursts_difference(curr, prev, threshold=5):
+        print(f"  {kw}: {score:.2f}")
