@@ -167,6 +167,7 @@ Three key comparisons form the core empirical analysis:
 
 ---
 
+**Requires:** Python 3.8 or higher
 ## Setup
 
 ```bash
@@ -181,6 +182,37 @@ pip install -r requirements.txt
 python -m pytest tests/ -v
 ```
 
+## How to Run
+
+### Step 1 — Clone the repository
+git clone https://github.com/your-repo-link-here
+cd Algorithm_CS5800_Project
+
+### Step 2 — Install dependencies
+pip install -r requirements.txt
+
+### Step 3 — Run the main pipeline
+python main.py
+
+This runs the full system on real Google Trends data and prints:
+- Top-K trending keywords for each window
+- Bursting keywords with growth scores  
+- Lifecycle classification (New / Cyclical / Fading / Seasonal)
+- Accessibility scores
+
+### Step 4 — Run experiments (generates all plots)
+python experiments.py
+python plots.py
+
+This produces 3 graphs:
+- Plot 1: Sliding window — incremental vs naive runtime
+- Plot 2: Top-K — heap vs sort runtime  
+- Plot 3: Burst detection — ratio vs difference detection rate
+
+### Step 5 — Run all tests
+python -m pytest tests/ -v
+
+Expected output: all tests passing (green).
 ---
 
 ## Team Responsibilities
