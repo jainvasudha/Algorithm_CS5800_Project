@@ -16,20 +16,19 @@ with open(_DB_PATH, "r") as f:
     _ACCESS_DB = json.load(f)
 
 
+_DEFAULT_SCORES = {"price": 0.5, "availability": 0.5, "versatility": 0.5, "size_inclusivity": 0.5}
+
+
 def accessibility_score(keyword):
-    entry = _ACCESS_DB.get(keyword)
-    if entry is None:
-        return None
+    entry = _ACCESS_DB.get(keyword, _DEFAULT_SCORES)
     score = sum(
-        ACCESSIBILITY_WEIGHTS[dim] * entry.get(dim, 0.0)
+        ACCESSIBILITY_WEIGHTS[dim] * entry.get(dim, 0.5)
         for dim in ACCESSIBILITY_WEIGHTS
     )
     return round(score, 4)
 
 
 def accessibility_label(score):
-    if score is None:
-        return "Unknown"
     for (lo, hi), label in ACCESSIBILITY_LABELS.items():
         if lo <= score <= hi:
             return label

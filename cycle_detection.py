@@ -92,11 +92,14 @@ def compute_slope(values):
     return num / denom
 
 
-def classify_trend(keyword, burst_score, cosine_sim, freq_trajectory,
+def classify_trend(keyword, current_freq, prev_freq, burst_score,
                    cyclical_threshold=0.75, burst_threshold=2.0,
                    decline_threshold=-0.3):
     """
     Label a trend as "New", "Cyclical", or "Fading" using simple rules.
+
+    Takes current and previous freq maps, builds a trajectory and
+    computes cosine similarity internally.
 
     Decision order:
       1. slope is very negative  -> Fading
@@ -105,6 +108,17 @@ def classify_trend(keyword, burst_score, cosine_sim, freq_trajectory,
       4. positive slope          -> New (growing)
       5. default                 -> Fading
     """
+    # build frequency trajectory from the two windows
+    curr_val = current_freq.get(keyword, 0) if isinstance(current_freq, dict) else 0
+    prev_val = prev_freq.get(keyword, 0) if isinstance(prev_freq, dict) else 0
+    freq_trajectory = [prev_val, curr_val]
+
+    # build vectors from both freq maps for cosine similarity
+    all_keys = sorted(set(current_freq.keys()) | set(prev_freq.keys()))
+    curr_vec = [current_freq.get(k, 0) for k in all_keys]
+    prev_vec = [prev_freq.get(k, 0) for k in all_keys]
+    cosine_sim = cosine_similarity(curr_vec, prev_vec)
+
     slope = compute_slope(freq_trajectory)
 
     # declining fast = fading, check this first
@@ -148,14 +162,25 @@ if __name__ == "__main__":
     match, sim = find_best_match(current, hist_db)
     print(f"\nBest match for {current}: '{match}' (sim={sim:.4f})")
 
-    # test classification
+    # test classification with different scenarios
     print("\nClassifications:")
-    test_cases = [
-        ("Y2K fashion",    4.6, 0.2,  [5, 10, 30, 60, 92]),
-        ("cargo pants",    1.1, 0.95, [10, 50, 10, 50, 45]),
-        ("skinny jeans",   0.15, 0.3, [80, 60, 40, 25, 12]),
-        ("wide-leg jeans", 2.6, 0.4,  [20, 35, 50, 65, 78]),
-    ]
-    for kw, burst, cos, traj in test_cases:
-        label = classify_trend(kw, burst, cos, traj)
-        print(f"  {kw:<20} burst={burst:.1f} cos={cos:.2f} slope={compute_slope(traj):+.1f} -> {label}")
+
+    # New - sudden burst, very different distribution
+    prev1 = {"Y2K fashion": 5, "jeans": 80}
+    curr1 = {"Y2K fashion": 92, "jeans": 20}
+    print(f"  Y2K fashion    -> {classify_trend('Y2K fashion', curr1, prev1, 4.6)}")
+
+    # Cyclical - same distribution both windows
+    prev2 = {"cargo pants": 50, "jeans": 30}
+    curr2 = {"cargo pants": 50, "jeans": 30}
+    print(f"  cargo pants    -> {classify_trend('cargo pants', curr2, prev2, 1.1)}")
+
+    # Fading - steep decline
+    prev3 = {"skinny jeans": 80, "other": 20}
+    curr3 = {"skinny jeans": 12, "other": 25}
+    print(f"  skinny jeans   -> {classify_trend('skinny jeans', curr3, prev3, 0.15)}")
+
+    # New - growing, different pattern
+    prev4 = {"wide-leg jeans": 20, "other": 50}
+    curr4 = {"wide-leg jeans": 78, "other": 10}
+    print(f"  wide-leg jeans -> {classify_trend('wide-leg jeans', curr4, prev4, 2.6)}")

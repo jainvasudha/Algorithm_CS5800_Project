@@ -103,39 +103,45 @@ class TestSlope:
 
 class TestClassify:
     def test_fading(self):
-        label = classify_trend("skinny jeans", burst_score=0.15,
-                               cosine_sim=0.3, freq_trajectory=[80, 60, 40, 25, 12])
-        assert label == "Fading"
+        # steep decline in keyword freq -> Fading
+        prev = {"skinny jeans": 80}
+        curr = {"skinny jeans": 12}
+        assert classify_trend("skinny jeans", curr, prev, 0.15) == "Fading"
 
     def test_cyclical(self):
-        label = classify_trend("cargo pants", burst_score=1.1,
-                               cosine_sim=0.95, freq_trajectory=[10, 50, 10, 50, 45])
-        assert label == "Cyclical"
+        # same distribution both windows -> high cosine sim -> Cyclical
+        prev = {"cargo pants": 50, "jeans": 30}
+        curr = {"cargo pants": 50, "jeans": 30}
+        assert classify_trend("cargo pants", curr, prev, 1.1) == "Cyclical"
 
     def test_new_burst(self):
-        label = classify_trend("Y2K fashion", burst_score=4.6,
-                               cosine_sim=0.2, freq_trajectory=[5, 10, 30, 60, 92])
-        assert label == "New"
+        # big burst + very different distribution -> New
+        prev = {"Y2K fashion": 5, "other": 100}
+        curr = {"Y2K fashion": 92, "other": 10}
+        assert classify_trend("Y2K fashion", curr, prev, 4.6) == "New"
 
     def test_new_growing(self):
-        label = classify_trend("wide-leg jeans", burst_score=1.5,
-                               cosine_sim=0.4, freq_trajectory=[20, 35, 50, 65, 78])
-        assert label == "New"
+        # growing keyword, low burst, different pattern -> New (via slope > 0)
+        prev = {"wide-leg jeans": 20, "other": 50}
+        curr = {"wide-leg jeans": 78, "other": 10}
+        assert classify_trend("wide-leg jeans", curr, prev, 1.5) == "New"
 
     def test_decline_beats_high_similarity(self):
-        # even if cosine_sim is high, a steep decline should still be Fading
-        label = classify_trend("retro", burst_score=0.5,
-                               cosine_sim=0.9, freq_trajectory=[100, 70, 40, 20, 5])
-        assert label == "Fading"
+        # steep decline should be Fading even if overall distribution is similar
+        prev = {"retro": 100, "a": 30}
+        curr = {"retro": 5, "a": 28}
+        assert classify_trend("retro", curr, prev, 0.5) == "Fading"
 
     def test_flat_defaults_to_fading(self):
-        label = classify_trend("neutral", burst_score=0.8,
-                               cosine_sim=0.3, freq_trajectory=[30, 30, 30, 30])
-        assert label == "Fading"
+        # flat keyword + very different overall pattern -> Fading
+        prev = {"neutral": 30, "x": 100}
+        curr = {"neutral": 30, "x": 0}
+        assert classify_trend("neutral", curr, prev, 0.8) == "Fading"
 
     def test_custom_thresholds(self):
         # lowering cyclical_threshold should flip this to Cyclical
-        label = classify_trend("test", burst_score=1.0, cosine_sim=0.5,
-                               freq_trajectory=[30, 30, 30, 30],
+        prev = {"test": 30, "x": 100}
+        curr = {"test": 30, "x": 5}
+        label = classify_trend("test", curr, prev, 1.0,
                                cyclical_threshold=0.4)
         assert label == "Cyclical"

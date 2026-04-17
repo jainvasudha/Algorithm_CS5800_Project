@@ -78,15 +78,17 @@ class TestAccessibility:
         score = accessibility_score("wide-leg jeans")
         assert score is not None and 0.0 <= score <= 1.0
     def test_unknown_keyword(self):
-        assert accessibility_score("nonexistent_item_xyz") is None
+        score = accessibility_score("nonexistent_item_xyz")
+        assert score == 0.5
     def test_label_highly_accessible(self):
         assert accessibility_label(0.85) == "Highly Accessible"
     def test_label_moderate(self):
         assert accessibility_label(0.55) == "Moderately Accessible"
     def test_label_low(self):
         assert accessibility_label(0.2) == "Low Accessibility"
-    def test_label_none(self):
-        assert accessibility_label(None) == "Unknown"
+    def test_label_default(self):
+        score = accessibility_score("nonexistent_item_xyz")
+        assert accessibility_label(score) == "Moderately Accessible"
     def test_score_keyword_returns_tuple(self):
         sc, lbl = score_keyword("mom jeans")
         assert isinstance(sc, float) and isinstance(lbl, str)

@@ -85,3 +85,54 @@ def top_k_sort(freq_map: dict[str, int], k: int) -> list[tuple[str, int]]:
     items.sort(key=lambda x: (-x[1], x[0]))
 
     return items[:k]
+
+
+if __name__ == "__main__":
+    import csv
+    import os
+    import time
+
+    # Build freq_map from the latest data point in each Google Trends CSV
+    data_dir = os.path.join(os.path.dirname(__file__), "data", "google_trends")
+    freq_map = {}
+
+    for filename in sorted(os.listdir(data_dir)):
+        if not filename.endswith(".csv"):
+            continue
+        filepath = os.path.join(data_dir, filename)
+        with open(filepath) as f:
+            reader = csv.reader(f)
+            header = next(reader)  # skip header
+            keyword = header[1].strip()
+            # Read all rows, keep the last one as "current" frequency
+            last_val = 0
+            for row in reader:
+                if row[1].strip().isdigit():
+                    last_val = int(row[1])
+            freq_map[keyword] = last_val
+
+    print("=" * 55)
+    print("  Top-K Selection Demo — Real Google Trends Data")
+    print("=" * 55)
+    print(f"\nFrequency map (latest month, {len(freq_map)} keywords):")
+    for kw, count in sorted(freq_map.items(), key=lambda x: -x[1]):
+        print(f"  {kw:<22} → {count}")
+
+    K = 5
+    print(f"\n--- Top {K} by Heap (O(M log K)) ---")
+    t0 = time.perf_counter()
+    heap_result = top_k_heap(freq_map, K)
+    t1 = time.perf_counter()
+    for rank, (kw, count) in enumerate(heap_result, 1):
+        print(f"  #{rank}  {kw:<22}  freq={count}")
+    print(f"  Time: {(t1 - t0) * 1_000_000:.1f} μs")
+
+    print(f"\n--- Top {K} by Sort (O(M log M)) ---")
+    t0 = time.perf_counter()
+    sort_result = top_k_sort(freq_map, K)
+    t1 = time.perf_counter()
+    for rank, (kw, count) in enumerate(sort_result, 1):
+        print(f"  #{rank}  {kw:<22}  freq={count}")
+    print(f"  Time: {(t1 - t0) * 1_000_000:.1f} μs")
+
+    print(f"\nBoth methods agree: {set(heap_result) == set(sort_result)}")
