@@ -131,6 +131,7 @@ Project/
 ├── main.py                       # Entry point — connects all modules
 ├── stream_simulator.py           # CSV → streaming events
 ├── sliding_window.py             # Incremental frequency counting (deque + hash map)
+├── compare.py                    # Validates optimized sliding window matches baseline output
 ├── baseline.py                   # Naive full-scan (for comparison)
 ├── top_k.py                      # Heap-based + sort-based Top-K selection
 ├── burst_detection.py            # Ratio + difference burst scoring
