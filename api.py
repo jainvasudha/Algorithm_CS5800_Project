@@ -3,9 +3,9 @@ api.py — Flask backend connecting FashionTrend UI to your real Python algorith
 
 HOW TO USE:
     1. Place this file in your repo root (same folder as main.py)
-    2. pip install flask flask-cors
-    3. python api.py
-    4. Open index.html in your browser — it will auto-connect to this backend
+    2. pip3 install flask flask-cors
+    3. python3 api.py
+    4. Open index.html in your browser
 """
 
 import sys, os, random
@@ -14,11 +14,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 
-# ── Import YOUR real modules ───────────────────────────────────────────────────
+# ── Import YOUR real modules ───────────────────────────────────────────────
 from sliding_window import add_event, get_frequencies, reset_window
 from top_k import top_k_heap
 from burst_detection import detect_bursts
-from accessibility import score_keyword
+from accessibility import compute_accessibility_score, load_accessibility_db
 from config import (
     DEFAULT_K,
     BURST_THRESHOLD_RATIO,
@@ -38,6 +38,17 @@ try:
 except Exception:
     HAS_SYNTHETIC = False
 
+# ── Load accessibility database once at startup ────────────────────────────
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "data", "accessibility_db.json")
+try:
+    ACCESSIBILITY_DB = load_accessibility_db(DB_PATH)
+    print(f"  Accessibility DB loaded: {len(ACCESSIBILITY_DB)} keywords")
+except Exception as e:
+    ACCESSIBILITY_DB = {}
+    print(f"  WARNING: Could not load accessibility DB: {e}")
+
+# ── Flask app ──────────────────────────────────────────────────────────────
 app = Flask(__name__)
 CORS(app)
 
@@ -45,13 +56,14 @@ WINDOW_EVENT_MAP = {4: 400, 8: 800, 12: 1500, 26: 3000, 52: 6000}
 
 BASE_FREQS = {
     "wide-leg jeans": 92, "y2k fashion": 67, "cargo pants": 78,
-    "baggy jeans": 58, "corset top": 51, "mom jeans": 45,
-    "oversized blazer": 44, "flared pants": 38, "low-rise jeans": 35,
-    "skinny jeans": 22,
+    "baggy jeans": 58,    "corset top": 51,  "mom jeans": 45,
+    "oversized blazer": 44, "flared pants": 38,
+    "low-rise jeans": 35,  "skinny jeans": 22,
 }
 
 
 def build_events(keywords, n_per_keyword=500):
+    """Generate a synthetic event stream for the given keywords."""
     if HAS_SYNTHETIC:
         try:
             all_events = generate_mixed_stream(n_events_per_keyword=n_per_keyword)
@@ -61,6 +73,8 @@ def build_events(keywords, n_per_keyword=500):
                 return filtered
         except Exception:
             pass
+
+    # Fallback: build manually
     events = []
     t = 0
     for kw in keywords:
@@ -74,18 +88,21 @@ def build_events(keywords, n_per_keyword=500):
 
 
 def classify_fallback(kw, current_freq, prev_freq, burst_score):
+    """Fallback classifier — mirrors your real cycle_detection.py logic."""
     curr = current_freq.get(kw, 0)
     prev = prev_freq.get(kw, 0)
-    if prev == 0 and curr > 0: return "New"
-    if curr > prev * 1.5:      return "New"
-    if curr < prev * 0.7:      return "Fading"
-    if burst_score > 2.0:      return "Cyclical"
+    if prev == 0 and curr > 0:   return "New"
+    if curr > prev * 1.5:        return "New"
+    if curr < prev * 0.7:        return "Fading"
+    if burst_score >= 2.0:       return "New"
+    if prev > 0 and 0.7 <= (curr / max(prev, 1)) <= 1.3:
+        return "Cyclical"
     return "Fading"
 
 
 @app.route('/api/detect', methods=['GET'])
 def detect():
-    raw = request.args.get('keywords', '')
+    raw      = request.args.get('keywords', '')
     keywords = [k.strip() for k in raw.split(',') if k.strip()]
     if not keywords:
         return jsonify({"error": "Please provide at least one keyword"}), 400
@@ -98,12 +115,13 @@ def detect():
     n_per_kw     = max(200, window_size // max(len(keywords), 1))
     burst_method = "difference" if method_param == "diff" else "ratio"
 
+    # Step 1: Generate events
     events = build_events(keywords, n_per_keyword=n_per_kw)
     if not events:
         return jsonify({"error": "Could not generate events"}), 400
 
+    # Step 2: Sliding window — Bhoomika's sliding_window.py
     mid = len(events) // 2
-
     reset_window()
     for t, kw in events[:mid]:
         add_event(t, kw, window_size)
@@ -117,28 +135,41 @@ def detect():
     if not current_freq:
         return jsonify({"error": "No frequency data"}), 400
 
+    # Step 3: Top-K heap — Vasudha's top_k.py
     top_k_result = top_k_heap(current_freq, k)
-    bursts       = detect_bursts(current_freq, prev_freq,
-                                 threshold=threshold, method=burst_method)
-    burst_map    = dict(bursts)
 
+    # Step 4: Burst detection — Vasudha's burst_detection.py
+    bursts    = detect_bursts(current_freq, prev_freq,
+                              threshold=threshold, method=burst_method)
+    burst_map = dict(bursts)
+
+    # Step 5: Classification — Vasudha's cycle_detection.py
     classifications = {}
     for kw in current_freq:
         b_score = burst_map.get(kw, 0.0)
         if HAS_CYCLE:
             try:
-                classifications[kw] = classify_trend(kw, current_freq, prev_freq, b_score)
+                classifications[kw] = classify_trend(
+                    kw, current_freq, prev_freq, b_score)
             except Exception:
-                classifications[kw] = classify_fallback(kw, current_freq, prev_freq, b_score)
+                classifications[kw] = classify_fallback(
+                    kw, current_freq, prev_freq, b_score)
         else:
-            classifications[kw] = classify_fallback(kw, current_freq, prev_freq, b_score)
+            classifications[kw] = classify_fallback(
+                kw, current_freq, prev_freq, b_score)
 
+    # Step 6: Accessibility — Parvathi's accessibility.py
     results = []
-    for kw, freq in sorted(current_freq.items(), key=lambda x: x[1], reverse=True):
-        try:
-            acc_score, acc_label = score_keyword(kw)
-        except Exception:
-            acc_score, acc_label = 0.65, "Moderate"
+    for kw, freq in sorted(current_freq.items(),
+                            key=lambda x: x[1], reverse=True):
+        # Use real accessibility DB if available, fallback to 0.65
+        if ACCESSIBILITY_DB:
+            acc_score, acc_label = compute_accessibility_score(
+                kw, ACCESSIBILITY_DB)
+            if acc_score == 0.0 and acc_label == "NO_DATA":
+                acc_score, acc_label = 0.65, "Moderately Accessible"
+        else:
+            acc_score, acc_label = 0.65, "Moderately Accessible"
 
         prev     = prev_freq.get(kw, 0)
         bsr      = round(freq / max(prev, 1), 3)
@@ -149,7 +180,7 @@ def detect():
             "keyword":      kw,
             "freq":         freq,
             "prev":         prev,
-            "label":        classifications.get(kw, "Unknown"),
+            "label":        classifications.get(kw, "Fading"),
             "bs_ratio":     bsr,
             "bs_diff":      round(bsd, 3),
             "isBurst":      is_burst,
@@ -175,11 +206,12 @@ def health():
     return jsonify({
         "status": "running",
         "modules": {
-            "sliding_window":  True,
-            "top_k":           True,
-            "burst_detection": True,
-            "cycle_detection": HAS_CYCLE,
-            "synthetic_data":  HAS_SYNTHETIC,
+            "sliding_window":   True,
+            "top_k":            True,
+            "burst_detection":  True,
+            "cycle_detection":  HAS_CYCLE,
+            "synthetic_data":   HAS_SYNTHETIC,
+            "accessibility_db": len(ACCESSIBILITY_DB) > 0,
         }
     })
 
@@ -188,10 +220,11 @@ if __name__ == '__main__':
     print("=" * 55)
     print("  FashionTrend API — real algorithms running")
     print("=" * 55)
-    print(f"  cycle_detection loaded : {HAS_CYCLE}")
-    print(f"  synthetic data loaded  : {HAS_SYNTHETIC}")
-    print(f"  burst threshold        : {BURST_THRESHOLD_RATIO}")
-    print(f"  default K              : {DEFAULT_K}")
+    print(f"  cycle_detection loaded  : {HAS_CYCLE}")
+    print(f"  synthetic data loaded   : {HAS_SYNTHETIC}")
+    print(f"  accessibility DB loaded : {len(ACCESSIBILITY_DB) > 0}")
+    print(f"  burst threshold         : {BURST_THRESHOLD_RATIO}")
+    print(f"  default K               : {DEFAULT_K}")
     print()
     print("  Server → http://localhost:5000")
     print("  Open index.html in your browser")
