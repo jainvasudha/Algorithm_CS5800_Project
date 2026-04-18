@@ -1,8 +1,12 @@
-# Real-Time Fashion Cycle Detection System
+# Real-Time Fashion Trend Detection System
 
-**Course:** CS5800 — Algorithms | Northeastern University | Spring 2026
+**Course:** CS 5800 — Algorithms | Northeastern University | Spring 2026
 
 **Team:** Bhoomika Panday, Vasudha Jain, Parvathi Gottumukkala
+
+**Report:** `ReportGottumukkalaJainPanday.pdf`
+
+**Live Demo:** [delicate-dango-9dd344.netlify.app](https://delicate-dango-9dd344.netlify.app/)
 
 ---
 
@@ -13,101 +17,86 @@ This system processes streaming fashion trend data from Google Trends and:
 1. **Tracks** keyword frequency over time using a sliding window with incremental updates
 2. **Ranks** the Top-K most frequent trends using a min-heap
 3. **Detects bursts** — sudden spikes in trend popularity across consecutive time windows
-4. **Classifies** each trend's lifecycle stage (New, Cyclical, Seasonal, Fading) using cosine similarity
-5. **Scores** trends on accessibility using weighted multi-criteria scoring
+4. **Classifies** each trend's lifecycle stage (New, Cyclical, Fading) using per-keyword change analysis
+5. **Scores** trends on accessibility using weighted multi-criteria scoring with min-heap ranking
 
-No machine learning is used — only classical data structures and algorithms.
-
----
-
-## System Pipeline
-
-```
-Google Trends CSV → Stream Simulator → [Sliding Window] → freq_map
-                                                              │
-                                            ┌─────────────────┼──────────────────┐
-                                            ▼                 ▼                  ▼
-                                      [Top-K Heap]    [Burst Detection]   [Cosine Sim]
-                                            │                 │                  │
-                                            ▼                 ▼                  ▼
-                                      top K trends      bursting items     trend labels
-                                            │                 │                  │
-                                            └────────┬────────┘                  │
-                                                     ▼                           │
-                                            Combined Results  ◄──────────────────┘
-                                                     │
-                                            + accessibility score
-                                                     ▼
-                                               Final Output
-```
+No machine learning is used — only classical data structures and algorithms from CS 5800.
 
 ---
 
-## Algorithms & Data Structures
+## How to Run
 
-### 1. Sliding Window (Incremental Frequency Counting)
+### Prerequisites
 
-| | Naive | Optimized |
-|---|---|---|
-| **Approach** | Full scan of all events in window each query | Deque + hash map, incremental insert/expire |
-| **Time** | O(N) per query | O(1) amortized per event |
-| **Space** | O(N) | O(W) where W = window size |
-| **Course Topic** | Baseline comparison | Hash Tables, Deques, Amortized Analysis |
+- Python 3.8 or higher
+- pip
 
-### 2. Top-K Selection
+### Step 1 — Clone and install
 
-| | Sort-Based | Heap-Based |
-|---|---|---|
-| **Approach** | Sort all M items, take first K | Min-heap of size K, single pass |
-| **Time** | O(M log M) | O(M log K) |
-| **Space** | O(M) | O(K) |
-| **Course Topic** | Sorting (Timsort baseline) | Priority Queues, Heaps, Greedy |
-
-**Key insight:** When K = 5 and M = 1000, the heap approach does ~5,000 comparisons vs ~10,000 for sorting. The advantage grows as M increases while K stays small.
-
-### 3. Burst Detection (Two Scoring Variants)
-
-| | Ratio Scoring | Difference Scoring |
-|---|---|---|
-| **Formula** | `current_freq / prev_freq` | `current_freq - prev_freq` |
-| **Catches** | Small-absolute, high-relative spikes (e.g., 2 → 10) | Large-absolute spikes (e.g., 500 → 600) |
-| **Time** | O(M) | O(M) |
-| **Course Topic** | Algorithm Design, Complexity Analysis |
-
-### 4. Cycle Classification (Cosine Similarity)
-
-Compares a trend's current frequency vector against historical vectors to classify its lifecycle stage.
-
-```
-cos(v_current, v_historical) = (v_current · v_historical) / (‖v_current‖ × ‖v_historical‖)
+```bash
+git clone https://github.com/jainvasudha/Algorithm_CS5800_Project.git
+cd Algorithm_CS5800_Project
+pip install -r requirements.txt
 ```
 
-| Label | Condition |
-|---|---|
-| Cyclical | High cosine similarity with a past trend vector |
-| New | No historical match, recent emergence |
-| Seasonal | Repeating pattern at regular intervals |
-| Fading | Declining frequency over recent windows |
+**Dependencies:** `matplotlib`, `pytest`, `pytrends` — all algorithm implementations use only Python's standard library (`heapq`, `collections`, `math`, `csv`, `time`, `tracemalloc`).
+
+### Step 2 — Run the main pipeline
+
+```bash
+python main.py
+```
+
+This runs the full system on synthetic streaming data and prints:
+- Top-K trending keywords for each window
+- Bursting keywords with growth scores
+- Lifecycle classification (New / Cyclical / Fading)
+- Accessibility scores
+
+### Step 3 — Run experiments and generate plots
+
+```bash
+python experiments.py
+python plots.py
+```
+
+This produces 3 performance comparison charts:
+- Plot 1: Sliding window — incremental vs naive runtime (N = 1K to 100K)
+- Plot 2: Top-K — heap vs sort runtime (M = 50 to 5,000)
+- Plot 3: Burst detection — ratio vs difference detection rate across thresholds
+
+### Step 4 — Run the web demo (optional)
+
+```bash
+pip install flask flask-cors
+python api.py
+```
+
+Then open the website at [delicate-dango-9dd344.netlify.app](https://delicate-dango-9dd344.netlify.app/) or serve `index.html` locally.
+
+### Step 5 — Run all tests
+
+```bash
+python -m pytest tests/ -v
+```
 
 ---
 
-## Problem Definition
+## Algorithms and CS 5800 Topics
 
-**Input:**
-- A data stream `S = {(keyword_i, timestamp_i)}` of fashion keyword mentions over time
-- Window size `W`, Top-K parameter `K`, burst threshold `B_thresh`, similarity threshold `C_thresh`
-
-**Output (per window):**
-- Top-K most frequent keywords
-- Top-K bursting keywords with growth scores
-- Lifecycle classification for each trend
-- Accessibility score and ranking
+| # | Algorithm | Approach | Time | CS 5800 Topic |
+|---|-----------|----------|------|---------------|
+| 1 | Sliding Window | Deque + hash map, incremental insert/expire | O(1) amortized per event | Hash Tables, Deques, Amortized Analysis |
+| 2 | Top-K Selection | Min-heap of size K, single pass | O(M log K) | Priority Queues, Heaps, Greedy |
+| 3 | Burst Detection | Ratio and difference scoring between windows | O(M) | Algorithm Design, Complexity Analysis |
+| 4 | Cycle Classification | Per-keyword change ratio + slope | O(1) per keyword | Algorithm Design |
+| 5 | Accessibility Scoring | Weighted sum + min-heap ranking | O(T log K) | Weighted Scoring, Priority Queues |
 
 ---
 
 ## Data
 
-We use **real Google Trends data** (2004–2026, monthly, worldwide) for 10 fashion keywords:
+10 real Google Trends CSVs (2004–2026, monthly, worldwide):
 
 | Keyword | Expected Pattern |
 |---|---|
@@ -122,6 +111,8 @@ We use **real Google Trends data** (2004–2026, monthly, worldwide) for 10 fash
 | corset top | Fashion micro-trend |
 | oversized blazer | Steady rise |
 
+Synthetic data with known ground-truth patterns is also generated via `data/generate_synthetic.py` for controlled experiment accuracy measurement.
+
 ---
 
 ## Project Structure
@@ -129,112 +120,46 @@ We use **real Google Trends data** (2004–2026, monthly, worldwide) for 10 fash
 ```
 Project/
 ├── main.py                       # Entry point — connects all modules
+├── api.py                        # Flask backend for the web demo
 ├── stream_simulator.py           # CSV → streaming events
 ├── sliding_window.py             # Incremental frequency counting (deque + hash map)
-├── compare.py                    # Validates optimized sliding window matches baseline output
 ├── baseline.py                   # Naive full-scan (for comparison)
+├── compare.py                    # Validates optimized output matches baseline
 ├── top_k.py                      # Heap-based + sort-based Top-K selection
 ├── burst_detection.py            # Ratio + difference burst scoring
 ├── cycle_detection.py            # Cosine similarity + trend classifier
-├── accessibility.py              # Weighted multi-criteria scoring
+├── accessibility.py              # Weighted multi-criteria scoring + heap ranking
 ├── experiments.py                # Benchmarking harness (timing + memory)
 ├── plots.py                      # matplotlib charts for experiments
 ├── config.py                     # Shared constants
 ├── data/
 │   ├── google_trends/            # 10 real Google Trends CSVs
-│   ├── accessibility_db.json     # Hand-curated accessibility scores
+│   ├── accessibility_db.json     # Hand-curated accessibility scores (30 keywords)
 │   └── generate_synthetic.py     # Synthetic data generator
 ├── tests/
-│   ├── test_top_k.py             # Top-K unit tests
 │   ├── test_window.py            # Sliding window tests
-│   ├── test_burst.py             # Burst detection tests
+│   ├── test_top_k.py             # Top-K unit tests
 │   ├── test_cycle.py             # Cycle classification tests
+│   ├── test_accessibility.py     # Accessibility scoring tests
 │   └── test_integration.py       # End-to-end pipeline tests
-├── report/                       # Final report
+├── report/                       # Progress reports
 └── requirements.txt
 ```
 
 ---
 
-## Experiments
-
-Three key comparisons form the core empirical analysis:
-
-| # | Experiment | What We Vary | What We Measure |
-|---|---|---|---|
-| 1 | **Sliding Window: Incremental vs Naive** | Stream size N (1K → 100K) | Wall-clock time |
-| 2 | **Top-K: Heap vs Sort** | M (distinct items: 50–5000), K (5–500) | Runtime |
-| 3 | **Burst Detection: Ratio vs Difference** | Threshold (1.5–10.0) | Detection rate, false positives |
-
----
-
-**Requires:** Python 3.8 or higher
-## Setup
-
-```bash
-pip install -r requirements.txt
-```
-
-**Dependencies:** `matplotlib`, `pytest`, `pytrends` — everything else is Python standard library (`heapq`, `collections`, `math`, `csv`, `time`, `tracemalloc`).
-
-## Run Tests
-
-```bash
-python -m pytest tests/ -v
-```
-
-## How to Run
-
-### Step 1 — Clone the repository
-git clone https://github.com/your-repo-link-here
-cd Algorithm_CS5800_Project
-
-### Step 2 — Install dependencies
-pip install -r requirements.txt
-
-### Step 3 — Run the main pipeline
-python main.py
-
-This runs the full system on real Google Trends data and prints:
-- Top-K trending keywords for each window
-- Bursting keywords with growth scores  
-- Lifecycle classification (New / Cyclical / Fading / Seasonal)
-- Accessibility scores
-
-### Step 4 — Run experiments (generates all plots)
-python experiments.py
-python plots.py
-
-This produces 3 graphs:
-- Plot 1: Sliding window — incremental vs naive runtime
-- Plot 2: Top-K — heap vs sort runtime  
-- Plot 3: Burst detection — ratio vs difference detection rate
-
-### Step 5 — Run all tests
-python -m pytest tests/ -v
-
-Expected output: all tests passing (green).
----
-
 ## Team Responsibilities
 
-| Member | Module | Key Files |
+| Member | Role | Key Files |
 |---|---|---|
-| **Bhoomika** | Sliding Window Engine | `stream_simulator.py`, `sliding_window.py`, `baseline.py` |
-| **Vasudha** | Ranking & Analysis | `top_k.py`, `burst_detection.py`, `cycle_detection.py` |
-| **Parvathi** | Integration & Experiments | `main.py`, `accessibility.py`, `experiments.py`, `plots.py` |
+| **Bhoomika Panday** | Sliding Window Engine | `stream_simulator.py`, `sliding_window.py`, `baseline.py`, `compare.py` |
+| **Vasudha Jain** | Ranking & Classification | `top_k.py`, `burst_detection.py`, `cycle_detection.py` |
+| **Parvathi Gottumukkala** | Integration & Experiments | `main.py`, `accessibility.py`, `experiments.py`, `plots.py`, `api.py` |
 
 ---
 
-## Course Topic Mapping
+## References
 
-| Course Topic | Where It Appears |
-|---|---|
-| Hash Tables | Frequency counting — O(1) amortized updates |
-| Queues / Deques | Sliding window event management |
-| Priority Queues / Heaps | Min-heap for Top-K selection |
-| Sorting | Baseline comparison for Top-K |
-| Amortized Analysis | Sliding window insert/expire |
-| Complexity Analysis | Theoretical + empirical for every component |
-| Algorithm Design | Burst detection, cycle classification |
-| Greedy | Heap maintenance — always keep K largest seen so far |
+1. Cormen, T. H., Leiserson, C. E., Rivest, R. L., & Stein, C. (2022). *Introduction to Algorithms* (4th ed.). MIT Press.
+2. Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90–95.
+3. Google LLC. (2024). Google Trends. https://trends.google.com
