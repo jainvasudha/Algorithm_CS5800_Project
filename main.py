@@ -1,129 +1,208 @@
 """
-main.py — Entry point for the Real-Time Fashion Trend Detection System.
-Connects all modules into one pipeline.
+main.py — Integration Pipeline (Parvathi / Shravya).
+
+Connects all three modules into a single end-to-end pipeline:
+  Module A  (Bhoomika) → Sliding Window Engine      → freq_map
+  Module B  (Vasudha)  → Top-K, Burst, Classify     → ranked trends
+  Module C  (Parvathi) → Accessibility Scoring       → final output
+
+Usage:
+  python -m src.main                        # synthetic demo
+  python -m src.main --csv data/google_trends/fashion.csv
+
+The pipeline tries to import the real implementations first; if they are not
+present yet it falls back to the stubs in src/stubs.py so the integration
+can be demonstrated immediately.
 """
 
-import sys, os, heapq
-from collections import deque
+import argparse
+import json
+import os
+import sys
+from typing import Dict, List, Optional, Tuple
 
-sys.path.insert(0, os.path.dirname(__file__))
-
-from config import DEFAULT_K, BURST_THRESHOLD_RATIO, DEFAULT_BURST_METHOD
-from burst_detection import detect_bursts
-from accessibility import score_keyword
+# ── Import real modules if available, otherwise fall back to stubs ─────────────
+try:
+    from src.sliding_window import SlidingWindowEngine
+    from src.baseline import recompute_frequencies
+    from src.stream_simulator import load_google_trends_csv
+    _REAL_A = True
+except ImportError:
+    from src.stubs import SlidingWindowEngine, recompute_frequencies  # type: ignore
+    _REAL_A = False
 
 try:
-    from top_k import top_k_heap
-    HAS_TOP_K = True
+    from src.top_k import top_k_heap, top_k_sort
+    from src.burst_detection import detect_bursts
+    from src.cycle_detection import cosine_similarity
+    from src.trend_classifier import classify_trend
+    _REAL_B = True
 except ImportError:
-    HAS_TOP_K = False
+    from src.stubs import (  # type: ignore
+        top_k_heap, top_k_sort, detect_bursts, cosine_similarity, classify_trend,
+    )
+    _REAL_B = False
 
-try:
-    from cycle_detection import classify_trend
-    HAS_CYCLE = True
-except ImportError:
-    HAS_CYCLE = False
+from src.accessibility import compute_accessibility_score, rank_by_accessibility, load_accessibility_db
+from src.config import DEFAULT_WINDOW_SIZE, DEFAULT_K, BURST_THRESHOLD, BURST_METHOD
 
-
-def _top_k_heap_fallback(freq_map, k):
-    heap = []
-    for kw, count in freq_map.items():
-        if len(heap) < k:
-            heapq.heappush(heap, (count, kw))
-        elif count > heap[0][0]:
-            heapq.heapreplace(heap, (count, kw))
-    return [(kw, count) for count, kw in sorted(heap, reverse=True)]
+# Synthetic data lives in data/
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from data.generate_synthetic import generate_mixed_stream
 
 
-def _classify_trend_fallback(keyword, current_freq, previous_freq, burst_score):
-    curr = current_freq.get(keyword, 0)
-    prev = previous_freq.get(keyword, 0)
-    if prev == 0 and curr > 0: return "New"
-    elif burst_score > 2.0: return "Growing"
-    elif curr < prev * 0.5: return "Fading"
-    else: return "Stable"
+# ── Pipeline ──────────────────────────────────────────────────────────────────
 
+def run_pipeline(
+    events: List[Tuple[int, str]],
+    accessibility_db: Dict,
+    window_size: int = DEFAULT_WINDOW_SIZE,
+    k: int = DEFAULT_K,
+    burst_threshold: float = BURST_THRESHOLD,
+    burst_method: str = BURST_METHOD,
+    verbose: bool = True,
+) -> List[Dict]:
+    """
+    Process the full event stream and return a list of enriched trend records.
 
-def run_pipeline(events, window_size=1000, k=DEFAULT_K,
-                 burst_threshold=BURST_THRESHOLD_RATIO,
-                 burst_method=DEFAULT_BURST_METHOD, snapshot_interval=100):
-    window, freq, prev_freq, results = deque(), {}, {}, []
+    Steps per window boundary:
+      1. Feed events into the incremental sliding window.
+      2. At each window step: extract current freq_map.
+      3. Run Top-K heap selection.
+      4. Run burst detection vs previous window.
+      5. Build frequency trajectory for cycle classification.
+      6. Score accessibility for each detected trend.
+      7. Merge into final output record.
+    """
+    engine = SlidingWindowEngine(window_size)
+    prev_freq: Dict[str, int] = {}
+    trajectory: Dict[str, List[int]] = {}   # keyword → list of per-window counts
+    results: List[Dict] = []
 
-    for i, (t, kw) in enumerate(events):
-        window.append((t, kw))
-        freq[kw] = freq.get(kw, 0) + 1
-        while window and window[0][0] <= t - window_size:
-            _, old_kw = window.popleft()
-            freq[old_kw] -= 1
-            if freq[old_kw] == 0: del freq[old_kw]
+    # Group events by their timestamp so we can process window-by-window
+    from collections import defaultdict
+    by_step: Dict[int, List[str]] = defaultdict(list)
+    for ts, kw in events:
+        by_step[ts].append(kw)
 
-        if i % snapshot_interval == 0 and i > 0:
-            current_freq = dict(freq)
-            top_k = top_k_heap(current_freq, k) if HAS_TOP_K else _top_k_heap_fallback(current_freq, k)
-            bursts = detect_bursts(current_freq, prev_freq, threshold=burst_threshold, method=burst_method)
-            burst_map = dict(bursts)
+    all_steps = sorted(by_step.keys())
 
-            classifications = {}
-            for keyword in current_freq:
-                b_score = burst_map.get(keyword, 0.0)
-                if HAS_CYCLE:
-                    classifications[keyword] = classify_trend(keyword, current_freq, prev_freq, b_score)
-                else:
-                    classifications[keyword] = _classify_trend_fallback(keyword, current_freq, prev_freq, b_score)
+    for step in all_steps:
+        # Process all events at this time step
+        for kw in by_step[step]:
+            engine.process_event(step, kw)
 
-            scored_trends = []
-            for keyword, count in top_k:
-                acc_score, acc_label = score_keyword(keyword)
-                scored_trends.append({
-                    "keyword": keyword, "freq": count,
-                    "label": classifications.get(keyword, "Unknown"),
-                    "burst": burst_map.get(keyword, 0.0),
-                    "accessibility": acc_score, "access_label": acc_label,
-                })
-            results.append({
-                "timestamp": t, "event_index": i, "freq_map": current_freq,
-                "top_k": top_k, "bursts": bursts, "classifications": classifications,
-                "scored_trends": scored_trends,
+        freq_map = engine.get_current_frequencies()
+
+        # Update trajectories
+        for kw in freq_map:
+            trajectory.setdefault(kw, []).append(freq_map[kw])
+
+        # Top-K by frequency
+        top_freq = top_k_heap(freq_map, k)
+
+        # Burst detection
+        bursting = detect_bursts(freq_map, prev_freq, k, burst_threshold, burst_method)
+        burst_dict = {kw: score for kw, score in bursting}
+
+        # Build trend records for this step
+        step_records: List[Dict] = []
+        seen = set()
+        for kw, cnt in top_freq:
+            if kw in seen:
+                continue
+            seen.add(kw)
+            b_score = burst_dict.get(kw, 1.0)
+            traj = trajectory.get(kw, [cnt])
+            # Simplified historical comparison: compare first half vs second half
+            half = len(traj) // 2 or 1
+            hist_vec = traj[:half]
+            curr_vec = traj[half:]
+            if not curr_vec:
+                curr_vec = traj
+            cos_sim = cosine_similarity(hist_vec, curr_vec) if len(hist_vec) > 0 else 0.0
+            label = classify_trend(kw, b_score, cos_sim, traj)
+
+            step_records.append({
+                "step":      step,
+                "keyword":   kw,
+                "frequency": cnt,
+                "burst_score": round(b_score, 3),
+                "cosine_sim":  round(cos_sim, 3),
+                "label":     label,
             })
-            prev_freq = current_freq
+
+        # Rank by accessibility
+        ranked, alerts = rank_by_accessibility(step_records, accessibility_db, k)
+        results.extend(ranked)
+
+        if verbose and step % (window_size * 2) == 0:
+            print(f"\n── Step {step} ──────────────────────────────")
+            for r in ranked[:3]:
+                print(f"  {r['keyword']:<25} freq={r['frequency']:>3}  "
+                      f"burst={r['burst_score']:.2f}  label={r['label']:<10}  "
+                      f"access={r['accessibility_score']:.2f} ({r['accessibility_label']})")
+            if alerts:
+                print(f"  ⚠ Low/missing accessibility data: {alerts}")
+
+        prev_freq = dict(freq_map)
+
     return results
 
 
-def print_results(results, last_n=3):
-    for snapshot in results[-last_n:]:
-        print(f"\n{'='*60}")
-        print(f"Snapshot at event #{snapshot['event_index']} (timestamp={snapshot['timestamp']})")
-        print(f"{'='*60}")
-        print(f"\n  Top-{len(snapshot['top_k'])} Trends:")
-        for kw, count in snapshot["top_k"]:
-            print(f"    {kw:20s}  freq={count}")
-        if snapshot["bursts"]:
-            print(f"\n  Bursting Keywords:")
-            for kw, score in snapshot["bursts"][:5]:
-                print(f"    {kw:20s}  burst_score={score:.2f}")
-        print(f"\n  Scored Trends (with accessibility):")
-        for trend in snapshot["scored_trends"]:
-            acc = trend["accessibility"]
-            acc_str = f"{acc:.2f}" if acc is not None else "N/A"
-            print(f"    {trend['keyword']:20s}  freq={trend['freq']:>3d}  "
-                  f"label={trend['label']:10s}  burst={trend['burst']:.2f}  "
-                  f"access={acc_str} ({trend['access_label']})")
+# ── CLI entry point ────────────────────────────────────────────────────────────
+
+def _load_csv_events(path: str) -> List[Tuple[int, str]]:
+    """Try to load real CSV; fall back to synthetic if not found."""
+    if not os.path.exists(path):
+        print(f"[WARNING] CSV not found at {path}. Using synthetic data.")
+        return generate_mixed_stream()
+    # Real loader from Bhoomika's module (or stub equivalent)
+    try:
+        from src.stream_simulator import load_google_trends_csv
+        return load_google_trends_csv(path)
+    except ImportError:
+        print("[WARNING] stream_simulator.py not available; using synthetic data.")
+        return generate_mixed_stream()
 
 
 def main():
-    from data.generate_synthetic import generate_mixed_stream
-    print("Real-Time Fashion Trend Detection System")
-    print("=" * 60)
-    print("\nGenerating synthetic event stream...")
-    events = generate_mixed_stream(n_events_per_keyword=500)
-    print(f"  Total events: {len(events)}")
-    print("\nRunning pipeline...")
-    results = run_pipeline(events, window_size=2000, k=5, burst_threshold=1.5,
-                           burst_method="ratio", snapshot_interval=200)
-    print(f"  Snapshots collected: {len(results)}")
-    print_results(results, last_n=3)
-    print(f"\n{'='*60}\nPipeline complete.")
-    return results
+    parser = argparse.ArgumentParser(description="Real-Time Fashion Trend Detection Pipeline")
+    parser.add_argument("--csv",    type=str, default=None, help="Path to Google Trends CSV")
+    parser.add_argument("--window", type=int, default=DEFAULT_WINDOW_SIZE)
+    parser.add_argument("--k",      type=int, default=DEFAULT_K)
+    parser.add_argument("--burst-threshold", type=float, default=BURST_THRESHOLD)
+    parser.add_argument("--quiet",  action="store_true")
+    args = parser.parse_args()
+
+    # Load accessibility database
+    db_path = os.path.join(os.path.dirname(__file__), "..", "data", "accessibility_db.json")
+    try:
+        access_db = load_accessibility_db(db_path)
+    except FileNotFoundError:
+        print(f"[WARNING] accessibility_db.json not found at {db_path}. Scores will be 0.")
+        access_db = {}
+
+    # Load events
+    if args.csv:
+        events = _load_csv_events(args.csv)
+    else:
+        print("[INFO] No CSV provided. Running on synthetic mixed-pattern stream.")
+        events = generate_mixed_stream()
+
+    print(f"[INFO] Stream: {len(events)} events  |  "
+          f"window={args.window}  k={args.k}  "
+          f"using_real_A={_REAL_A}  using_real_B={_REAL_B}")
+
+    results = run_pipeline(
+        events, access_db,
+        window_size=args.window,
+        k=args.k,
+        burst_threshold=args.burst_threshold,
+        verbose=not args.quiet,
+    )
+
+    print(f"\n[INFO] Pipeline complete. {len(results)} trend records produced.")
 
 
 if __name__ == "__main__":

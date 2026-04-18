@@ -1,51 +1,39 @@
 """
-config.py — Shared constants for the Fashion Trend Detection System.
-All modules import from here to stay consistent.
+config.py — Shared configuration constants.
+
+All tunable parameters are centralised here so experiments can vary them
+without modifying algorithm files.
 """
 
-# Sliding Window
-WINDOW_SIZE_WEEKS = 12
-WINDOW_SIZE_SECONDS = WINDOW_SIZE_WEEKS * 7 * 24 * 3600
+# ── Sliding Window ─────────────────────────────────────────────────────
+DEFAULT_WINDOW_SIZE = 12        # 12 time-steps (weeks) per window
 
-# Top-K
-DEFAULT_K = 5
+# ── Top-K ──────────────────────────────────────────────────────────────
+DEFAULT_K = 5                   # how many top trends to surface
 
-# Burst Detection
-BURST_THRESHOLD_RATIO = 2.0
-BURST_THRESHOLD_DIFF = 10
-DEFAULT_BURST_METHOD = "ratio"
+# ── Burst Detection ────────────────────────────────────────────────────
+BURST_THRESHOLD = 2.0           # ratio >= 2.0  →  frequency at least doubled
+BURST_METHOD    = "ratio"       # "ratio" | "difference"
 
-# Cycle Detection / Cosine Similarity
-SIMILARITY_THRESHOLD = 0.8
+# ── Cycle Classification ───────────────────────────────────────────────
+CYCLICAL_SIMILARITY_THRESHOLD = 0.75
+DECLINE_SLOPE_THRESHOLD       = -0.3
 
-# Trend Classification labels
-LABEL_NEW = "New"
-LABEL_GROWING = "Growing"
-LABEL_CYCLICAL = "Cyclical"
-LABEL_FADING = "Fading"
-LABEL_STABLE = "Stable"
-
-# Accessibility
+# ── Accessibility Scoring ──────────────────────────────────────────────
+# Weights must sum to 1.0
 ACCESSIBILITY_WEIGHTS = {
-    "price": 0.30,
-    "availability": 0.25,
-    "versatility": 0.25,
-    "size_inclusivity": 0.20,
-}
-ACCESSIBILITY_LABELS = {
-    (0.0, 0.4): "Low Accessibility",
-    (0.4, 0.7): "Moderately Accessible",
-    (0.7, 1.0): "Highly Accessible",
+    "wheelchair_friendly":   0.20,
+    "adaptive_wearability":  0.25,
+    "size_inclusive":        0.25,
+    "sensory_friendly":      0.15,
+    "price_accessibility":   0.15,
 }
 
-# Experiment parameters
-EXPERIMENT_STREAM_SIZES = [1_000, 5_000, 10_000, 50_000, 100_000]
-EXPERIMENT_VOCAB_SIZES = [50, 100, 500, 1_000, 5_000]
-EXPERIMENT_K_VALUES = [5, 10, 50, 100, 500]
-
-# Keywords used across the project
-FASHION_KEYWORDS = [
-    "wide-leg jeans", "skinny jeans", "cargo pants", "Y2K fashion",
-    "low-rise jeans", "mom jeans", "flared pants", "baggy jeans",
-    "corset top", "oversized blazer",
-]
+# (min, max) for normalising each factor to [0, 1]
+ACCESSIBILITY_RANGES = {
+    "wheelchair_friendly":   (0, 1),
+    "adaptive_wearability":  (1, 5),
+    "size_inclusive":        (1, 5),
+    "sensory_friendly":      (0, 1),
+    "price_accessibility":   (1, 5),
+}

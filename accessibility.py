@@ -1,55 +1,151 @@
 """
-accessibility.py — Weighted accessibility scoring for fashion keywords.
+accessibility.py — Weighted Multi-Criteria Accessibility Scoring (Parvathi / Shravya).
 
-Score = sum(weight_i * dimension_i) for dimensions:
-    price, availability, versatility, size_inclusivity
+Algorithm design:
+  1. Each fashion keyword has 5 accessibility factors (binary or ordinal).
+  2. Every factor is min-max normalised to [0, 1] so different scales are comparable.
+  3. A weighted sum produces a composite score in [0, 1].
+  4. A min-heap of size K is used to rank the Top-K most accessible trends —
+     reusing the same heap pattern from Module B (Top-K selection).
+
+Time complexity : O(T · F + T · log K)
+                  T = number of trends, F = number of factors (constant = 5),
+                  simplifies to O(T log K).
+Space complexity: O(K) for the heap  +  O(V · F) for the accessibility database.
 """
 
+import heapq
 import json
 import os
+from typing import Dict, List, Optional, Tuple
 
-from config import ACCESSIBILITY_WEIGHTS, ACCESSIBILITY_LABELS
-
-_DB_PATH = os.path.join(os.path.dirname(__file__), "data", "accessibility_db.json")
-
-with open(_DB_PATH, "r") as f:
-    _ACCESS_DB = json.load(f)
+from src.config import ACCESSIBILITY_WEIGHTS, ACCESSIBILITY_RANGES
 
 
-_DEFAULT_SCORES = {"price": 0.5, "availability": 0.5, "versatility": 0.5, "size_inclusivity": 0.5}
+# ── Normalisation helper ───────────────────────────────────────────────────────
+
+def _normalise(value: float, lo: float, hi: float) -> float:
+    """Min-max normalise `value` from [lo, hi] to [0, 1].
+    Returns 1.0 if lo == hi (degenerate range).
+    """
+    if hi == lo:
+        return 1.0
+    return (value - lo) / (hi - lo)
 
 
-def accessibility_score(keyword):
-    entry = _ACCESS_DB.get(keyword, _DEFAULT_SCORES)
-    score = sum(
-        ACCESSIBILITY_WEIGHTS[dim] * entry.get(dim, 0.5)
-        for dim in ACCESSIBILITY_WEIGHTS
-    )
-    return round(score, 4)
+# ── Single-item scoring ────────────────────────────────────────────────────────
+
+def compute_accessibility_score(
+    keyword: str,
+    accessibility_db: Dict,
+    weights: Optional[Dict[str, float]] = None,
+) -> Tuple[float, str]:
+    """
+    Compute the weighted accessibility score for one keyword.
+
+    Parameters
+    ----------
+    keyword          : fashion keyword to look up.
+    accessibility_db : dict mapping keyword → {factor: raw_value, ...}
+    weights          : optional override; uses config defaults if None.
+
+    Returns
+    -------
+    (score_0_to_1, label)   where label ∈ {Highly Accessible, Moderately Accessible,
+                                            Limited Accessibility, Low Accessibility,
+                                            NO_DATA}
+    """
+    if weights is None:
+        weights = ACCESSIBILITY_WEIGHTS
+
+    if keyword not in accessibility_db:
+        return (0.0, "NO_DATA")
+
+    factors = accessibility_db[keyword]
+    score = 0.0
+
+    for factor, w in weights.items():
+        raw = factors.get(factor, 0)
+        lo, hi = ACCESSIBILITY_RANGES[factor]
+        normalised = _normalise(raw, lo, hi)
+        score += w * normalised
+
+    label = _classify_score(score)
+    return (round(score, 4), label)
 
 
-def accessibility_label(score):
-    for (lo, hi), label in ACCESSIBILITY_LABELS.items():
-        if lo <= score <= hi:
-            return label
-    return "Unknown"
+def _classify_score(score: float) -> str:
+    if score >= 0.80:
+        return "Highly Accessible"
+    if score >= 0.55:
+        return "Moderately Accessible"
+    if score >= 0.30:
+        return "Limited Accessibility"
+    return "Low Accessibility"
 
 
-def score_keyword(keyword):
-    sc = accessibility_score(keyword)
-    return sc, accessibility_label(sc)
+# ── Batch ranking using a min-heap ─────────────────────────────────────────────
+
+def rank_by_accessibility(
+    trends: List[Dict],
+    accessibility_db: Dict,
+    k: int,
+    weights: Optional[Dict[str, float]] = None,
+) -> Tuple[List[Dict], List[str]]:
+    """
+    Rank a list of detected trends by accessibility score and return the Top-K.
+
+    Uses a min-heap of size K so we never store more than K items at once:
+      - For each of T trends, one heap.push/pop operation → O(log K).
+      - Total: O(T log K).
+    Compare against the naive approach of sorting all T items → O(T log T).
+
+    Parameters
+    ----------
+    trends           : list of dicts with at least a "keyword" key.
+    accessibility_db : accessibility lookup table.
+    k                : number of top accessible trends to return.
+    weights          : optional weight override.
+
+    Returns
+    -------
+    (top_k_trends_sorted_desc, alert_keywords)
+    alert_keywords = items with label NO_DATA or Low Accessibility.
+    """
+    if k <= 0:
+        return ([], [])
+
+    min_heap: List[Tuple[float, int, Dict]] = []   # (score, idx, trend_dict)
+    alerts: List[str] = []
+
+    for idx, trend in enumerate(trends):
+        kw = trend.get("keyword", "")
+        score, label = compute_accessibility_score(kw, accessibility_db, weights)
+
+        # Attach score info to a copy of the trend dict
+        enriched = dict(trend)
+        enriched["accessibility_score"] = score
+        enriched["accessibility_label"] = label
+
+        if label in ("NO_DATA", "Low Accessibility"):
+            alerts.append(kw)
+
+        # Maintain min-heap of size k
+        if len(min_heap) < k:
+            heapq.heappush(min_heap, (score, idx, enriched))
+        elif score > min_heap[0][0]:
+            heapq.heapreplace(min_heap, (score, idx, enriched))
+
+    # Extract heap contents and sort descending
+    top_k = sorted(min_heap, key=lambda x: x[0], reverse=True)
+    return ([item[2] for item in top_k], alerts)
 
 
-def score_all_keywords(keywords):
-    results = []
-    for kw in keywords:
-        sc, lbl = score_keyword(kw)
-        results.append({"keyword": kw, "score": sc, "label": lbl})
-    return results
+# ── Database loader ────────────────────────────────────────────────────────────
 
-
-if __name__ == "__main__":
-    test_keywords = ["wide-leg jeans", "corset top", "hoodie", "unknown_item"]
-    for kw in test_keywords:
-        sc, lbl = score_keyword(kw)
-        print(f"  {kw:20s} → score={sc}, label={lbl}")
+def load_accessibility_db(path: str) -> Dict:
+    """Load the JSON accessibility database from disk."""
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"Accessibility DB not found: {path}")
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)

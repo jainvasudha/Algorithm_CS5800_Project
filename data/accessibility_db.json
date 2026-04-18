@@ -1,188 +1,220 @@
 {
-    "wide-leg jeans": {
-        "price": 0.7,
-        "availability": 0.9,
-        "versatility": 0.8,
-        "size_inclusivity": 0.9
-    },
-    "skinny jeans": {
-        "price": 0.8,
-        "availability": 0.95,
-        "versatility": 0.7,
-        "size_inclusivity": 0.5
-    },
-    "cargo pants": {
-        "price": 0.7,
-        "availability": 0.85,
-        "versatility": 0.75,
-        "size_inclusivity": 0.8
-    },
-    "Y2K fashion": {
-        "price": 0.4,
-        "availability": 0.5,
-        "versatility": 0.4,
-        "size_inclusivity": 0.4
-    },
-    "low-rise jeans": {
-        "price": 0.7,
-        "availability": 0.7,
-        "versatility": 0.5,
-        "size_inclusivity": 0.3
-    },
-    "mom jeans": {
-        "price": 0.8,
-        "availability": 0.9,
-        "versatility": 0.85,
-        "size_inclusivity": 0.85
-    },
-    "flared pants": {
-        "price": 0.65,
-        "availability": 0.7,
-        "versatility": 0.6,
-        "size_inclusivity": 0.7
-    },
-    "baggy jeans": {
-        "price": 0.75,
-        "availability": 0.8,
-        "versatility": 0.7,
-        "size_inclusivity": 0.9
-    },
-    "corset top": {
-        "price": 0.4,
-        "availability": 0.5,
-        "versatility": 0.3,
-        "size_inclusivity": 0.3
-    },
-    "oversized blazer": {
-        "price": 0.5,
-        "availability": 0.7,
-        "versatility": 0.8,
-        "size_inclusivity": 0.95
-    },
-    "platform shoes": {
-        "price": 0.4,
-        "availability": 0.6,
-        "versatility": 0.4,
-        "size_inclusivity": 0.5
-    },
-    "crop top": {
-        "price": 0.85,
-        "availability": 0.95,
-        "versatility": 0.6,
-        "size_inclusivity": 0.5
-    },
-    "maxi dress": {
-        "price": 0.6,
-        "availability": 0.85,
-        "versatility": 0.7,
-        "size_inclusivity": 0.85
-    },
-    "leather jacket": {
-        "price": 0.3,
-        "availability": 0.7,
-        "versatility": 0.8,
-        "size_inclusivity": 0.6
-    },
-    "graphic tee": {
-        "price": 0.9,
-        "availability": 0.95,
-        "versatility": 0.7,
-        "size_inclusivity": 0.9
-    },
-    "mini skirt": {
-        "price": 0.8,
-        "availability": 0.85,
-        "versatility": 0.5,
-        "size_inclusivity": 0.4
-    },
-    "hoodie": {
-        "price": 0.85,
-        "availability": 0.95,
-        "versatility": 0.75,
-        "size_inclusivity": 0.95
-    },
-    "trench coat": {
-        "price": 0.3,
-        "availability": 0.6,
-        "versatility": 0.75,
-        "size_inclusivity": 0.7
-    },
-    "denim jacket": {
-        "price": 0.7,
-        "availability": 0.85,
-        "versatility": 0.8,
-        "size_inclusivity": 0.75
-    },
-    "joggers": {
-        "price": 0.8,
-        "availability": 0.9,
-        "versatility": 0.65,
-        "size_inclusivity": 0.9
-    },
-    "wrap dress": {
-        "price": 0.6,
-        "availability": 0.7,
-        "versatility": 0.75,
-        "size_inclusivity": 0.8
-    },
-    "bucket hat": {
-        "price": 0.85,
-        "availability": 0.8,
-        "versatility": 0.5,
-        "size_inclusivity": 0.95
-    },
-    "puffer jacket": {
-        "price": 0.5,
-        "availability": 0.8,
-        "versatility": 0.6,
-        "size_inclusivity": 0.85
-    },
-    "tennis skirt": {
-        "price": 0.75,
-        "availability": 0.7,
-        "versatility": 0.45,
-        "size_inclusivity": 0.5
-    },
-    "bike shorts": {
-        "price": 0.8,
-        "availability": 0.8,
-        "versatility": 0.4,
-        "size_inclusivity": 0.6
-    },
-    "cardigan": {
-        "price": 0.7,
-        "availability": 0.9,
-        "versatility": 0.85,
-        "size_inclusivity": 0.9
-    },
-    "bodysuit": {
-        "price": 0.75,
-        "availability": 0.8,
-        "versatility": 0.6,
-        "size_inclusivity": 0.4
-    },
-    "culottes": {
-        "price": 0.6,
-        "availability": 0.55,
-        "versatility": 0.6,
-        "size_inclusivity": 0.75
-    },
-    "slip dress": {
-        "price": 0.6,
-        "availability": 0.65,
-        "versatility": 0.55,
-        "size_inclusivity": 0.5
-    },
-    "overalls": {
-        "price": 0.6,
-        "availability": 0.7,
-        "versatility": 0.65,
-        "size_inclusivity": 0.85
-    },
-    "pants": {
-        "price": 0.5,
-        "availability": 0.5,
-        "versatility": 0.5,
-        "size_inclusivity": 0.5
-    }
+  "_schema": {
+    "wheelchair_friendly":  "binary {0,1} — comfortable/easy to wear while seated",
+    "adaptive_wearability": "ordinal 1-5 — how easily modified for adaptive use (5=easiest)",
+    "size_inclusive":       "ordinal 1-5 — range of sizes typically available (5=widest)",
+    "sensory_friendly":     "binary {0,1} — non-irritating fabrics/construction",
+    "price_accessibility":  "ordinal 1-5 — affordability/availability (5=most accessible)"
+  },
+
+  "wide-leg jeans": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       4,
+    "sensory_friendly":     1,
+    "price_accessibility":  3
+  },
+  "skinny jeans": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 2,
+    "size_inclusive":       3,
+    "sensory_friendly":     0,
+    "price_accessibility":  4
+  },
+  "cargo pants": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       3,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "Y2K fashion": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 2,
+    "size_inclusive":       2,
+    "sensory_friendly":     0,
+    "price_accessibility":  2
+  },
+  "mom jeans": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       4,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "baggy jeans": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       4,
+    "sensory_friendly":     1,
+    "price_accessibility":  3
+  },
+  "flared pants": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 3,
+    "size_inclusive":       3,
+    "sensory_friendly":     1,
+    "price_accessibility":  3
+  },
+  "low-rise jeans": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 1,
+    "size_inclusive":       2,
+    "sensory_friendly":     0,
+    "price_accessibility":  3
+  },
+  "corset top": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 1,
+    "size_inclusive":       2,
+    "sensory_friendly":     0,
+    "price_accessibility":  2
+  },
+  "oversized blazer": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       4,
+    "sensory_friendly":     1,
+    "price_accessibility":  3
+  },
+  "winter boots": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 3,
+    "size_inclusive":       3,
+    "sensory_friendly":     1,
+    "price_accessibility":  3
+  },
+  "sneakers": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "slip dress": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       4,
+    "sensory_friendly":     1,
+    "price_accessibility":  3
+  },
+  "midi skirt": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "maxi dress": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "crop top": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 2,
+    "size_inclusive":       3,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "graphic tee": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  5
+  },
+  "hoodie": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  5
+  },
+  "trench coat": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       3,
+    "sensory_friendly":     1,
+    "price_accessibility":  2
+  },
+  "leather jacket": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 3,
+    "size_inclusive":       3,
+    "sensory_friendly":     0,
+    "price_accessibility":  2
+  },
+  "denim jacket": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       4,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "sweatpants": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  5
+  },
+  "leggings": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  5
+  },
+  "wrap dress": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  3
+  },
+  "button-down shirt": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       4,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "high heels": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 1,
+    "size_inclusive":       2,
+    "sensory_friendly":     0,
+    "price_accessibility":  3
+  },
+  "flat sandals": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       4,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "platform shoes": {
+    "wheelchair_friendly":  0,
+    "adaptive_wearability": 2,
+    "size_inclusive":       3,
+    "sensory_friendly":     0,
+    "price_accessibility":  3
+  },
+  "loungewear set": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 5,
+    "size_inclusive":       5,
+    "sensory_friendly":     1,
+    "price_accessibility":  4
+  },
+  "chunky knit sweater": {
+    "wheelchair_friendly":  1,
+    "adaptive_wearability": 4,
+    "size_inclusive":       4,
+    "sensory_friendly":     0,
+    "price_accessibility":  3
+  }
 }

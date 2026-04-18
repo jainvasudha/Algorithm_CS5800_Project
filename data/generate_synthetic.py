@@ -1,166 +1,218 @@
 """
-generate_synthetic.py — Creates synthetic event streams for testing and experiments.
+generate_synthetic.py — Synthetic Fashion-Trend Stream Generator (Parvathi / Shravya).
 
-Patterns: burst, cyclical, fading, flat, growing
-Also generates Google-Trends-style CSVs.
+Produces labelled event streams with known ground-truth patterns so that
+every algorithm can be tested against expected output.
+
+Patterns supported:
+  burst     — low background, then sudden spike then return to low
+  gradual   — exponentially increasing frequency
+  cyclical  — alternating high/low in a repeating pattern
+  seasonal  — spike at fixed intervals (e.g. every 26 weeks)
+  fading    — steadily declining frequency
+  flat      — constant frequency throughout (should NOT trigger any detector)
+  spike     — exactly one isolated high window (one-time anomaly)
+  tie       — multiple keywords at the same frequency (tests tie-breaking)
+
+Each pattern returns a sorted list of (timestamp, keyword) events suitable
+for direct ingestion by SlidingWindowEngine.process_event().
 """
 
-import csv, math, os, random
-from datetime import datetime, timedelta
-
-random.seed(42)
-
-DEFAULT_KEYWORDS = [
-    "wide-leg jeans", "skinny jeans", "cargo pants", "Y2K fashion",
-    "low-rise jeans", "mom jeans", "flared pants", "baggy jeans",
-    "corset top", "oversized blazer",
-]
+import random
+from typing import List, Tuple
 
 
-def generate_burst_stream(keyword="Y2K fashion", n_events=500,
-                          burst_start=0.7, burst_multiplier=5, base_rate=2):
-    events = []
-    total_seconds = n_events * 10
-    for i in range(n_events):
-        t = int(i * (total_seconds / n_events))
-        frac = i / n_events
-        rate = base_rate * burst_multiplier if frac >= burst_start else base_rate
-        if random.random() < (rate / (base_rate * burst_multiplier)):
-            events.append((t, keyword))
-    return events
+# ── Internal helpers ──────────────────────────────────────────────────────────
+
+def _expand(schedule: List[Tuple[int, str, int]], seed: int = 42) -> List[Tuple[int, str]]:
+    """
+    Expand a schedule [(week, keyword, count), ...] into individual events.
+    Events within the same week are shuffled so the stream appears realistic.
+    """
+    rng = random.Random(seed)
+    out: List[Tuple[int, str]] = []
+    for ts, kw, cnt in schedule:
+        out.extend([(ts, kw)] * cnt)
+    out.sort(key=lambda e: e[0])
+    return out
 
 
-def generate_cyclical_stream(keyword="cargo pants", n_events=1000,
-                             period_events=200, amplitude=0.4, base=0.5):
-    events = []
-    total_seconds = n_events * 10
-    for i in range(n_events):
-        t = int(i * (total_seconds / n_events))
-        prob = base + amplitude * math.sin(2 * math.pi * i / period_events)
-        if random.random() < prob:
-            events.append((t, keyword))
-    return events
+# ── Public generators ─────────────────────────────────────────────────────────
+
+def generate_burst(
+    keyword: str = "Y2K fashion",
+    n_weeks: int = 40,
+    background: int = 2,
+    spike_week: int = 20,
+    spike_height: int = 50,
+) -> List[Tuple[int, str]]:
+    """
+    Background noise up to spike_week, large spike, then return to background.
+    Ground truth: burst detected at spike_week.
+    """
+    schedule = []
+    for w in range(1, n_weeks + 1):
+        cnt = spike_height if w == spike_week else background
+        schedule.append((w, keyword, cnt))
+    return _expand(schedule)
 
 
-def generate_fading_stream(keyword="skinny jeans", n_events=500,
-                           start_prob=0.8, end_prob=0.05):
-    events = []
-    total_seconds = n_events * 10
-    for i in range(n_events):
-        t = int(i * (total_seconds / n_events))
-        prob = start_prob + (end_prob - start_prob) * (i / n_events)
-        if random.random() < prob:
-            events.append((t, keyword))
-    return events
+def generate_gradual(
+    keyword: str = "wide-leg jeans",
+    n_weeks: int = 40,
+    start: int = 1,
+    multiplier: float = 1.15,
+) -> List[Tuple[int, str]]:
+    """
+    Exponentially growing popularity. Good for 'New' classification.
+    """
+    schedule = []
+    cnt = start
+    for w in range(1, n_weeks + 1):
+        schedule.append((w, keyword, max(1, int(cnt))))
+        cnt *= multiplier
+    return _expand(schedule)
 
 
-def generate_flat_stream(keyword="mom jeans", n_events=500, prob=0.3):
-    events = []
-    total_seconds = n_events * 10
-    for i in range(n_events):
-        t = int(i * (total_seconds / n_events))
-        if random.random() < prob:
-            events.append((t, keyword))
-    return events
+def generate_cyclical(
+    keyword: str = "cargo pants",
+    n_weeks: int = 52,
+    low: int = 3,
+    high: int = 45,
+    period: int = 13,
+) -> List[Tuple[int, str]]:
+    """
+    Alternates between high and low every `period` weeks.
+    Ground truth: cosine similarity with historical half ≈ high.
+    """
+    schedule = []
+    for w in range(1, n_weeks + 1):
+        cnt = high if (w // period) % 2 == 0 else low
+        schedule.append((w, keyword, cnt))
+    return _expand(schedule)
 
 
-def generate_growing_stream(keyword="oversized blazer", n_events=500,
-                            start_prob=0.05, end_prob=0.7):
-    events = []
-    total_seconds = n_events * 10
-    for i in range(n_events):
-        t = int(i * (total_seconds / n_events))
-        prob = start_prob + (end_prob - start_prob) * (i / n_events)
-        if random.random() < prob:
-            events.append((t, keyword))
-    return events
+def generate_seasonal(
+    keyword: str = "winter boots",
+    n_weeks: int = 104,
+    base: int = 2,
+    spike: int = 60,
+    period: int = 26,
+    spike_width: int = 3,
+) -> List[Tuple[int, str]]:
+    """
+    Spike every `period` weeks (seasonal pattern).
+    """
+    schedule = []
+    for w in range(1, n_weeks + 1):
+        is_peak = (w % period) <= spike_width
+        cnt = spike if is_peak else base
+        schedule.append((w, keyword, cnt))
+    return _expand(schedule)
 
 
-def generate_mixed_stream(n_events_per_keyword=500):
-    generators = [
-        ("Y2K fashion", generate_burst_stream), ("cargo pants", generate_cyclical_stream),
-        ("skinny jeans", generate_fading_stream), ("mom jeans", generate_flat_stream),
-        ("oversized blazer", generate_growing_stream), ("wide-leg jeans", generate_growing_stream),
-        ("baggy jeans", generate_burst_stream), ("corset top", generate_burst_stream),
-        ("flared pants", generate_cyclical_stream), ("low-rise jeans", generate_fading_stream),
-    ]
-    all_events = []
-    for keyword, gen_func in generators:
-        all_events.extend(gen_func(keyword=keyword, n_events=n_events_per_keyword))
+def generate_fading(
+    keyword: str = "skinny jeans",
+    n_weeks: int = 40,
+    start: int = 80,
+    decrement: int = 2,
+) -> List[Tuple[int, str]]:
+    """
+    Steadily declining popularity. Ground truth: 'Fading' classification.
+    """
+    schedule = []
+    for w in range(1, n_weeks + 1):
+        cnt = max(0, start - (w - 1) * decrement)
+        if cnt > 0:
+            schedule.append((w, keyword, cnt))
+    return _expand(schedule)
+
+
+def generate_flat(
+    keyword: str = "mom jeans",
+    n_weeks: int = 40,
+    count: int = 20,
+) -> List[Tuple[int, str]]:
+    """
+    Constant frequency — should NOT trigger burst or fading detectors.
+    """
+    schedule = [(w, keyword, count) for w in range(1, n_weeks + 1)]
+    return _expand(schedule)
+
+
+def generate_spike(
+    keyword: str = "corset top",
+    n_weeks: int = 40,
+    spike_week: int = 15,
+    spike_height: int = 80,
+    background: int = 1,
+) -> List[Tuple[int, str]]:
+    """
+    Single isolated peak — one-time anomaly.
+    """
+    return generate_burst(keyword, n_weeks, background, spike_week, spike_height)
+
+
+def generate_tie_stream(
+    keywords: List[str] = None,
+    n_weeks: int = 10,
+    count: int = 30,
+) -> List[Tuple[int, str]]:
+    """
+    Multiple keywords with identical frequency — tests tie-breaking in Top-K.
+    """
+    if keywords is None:
+        keywords = ["baggy jeans", "flared pants", "low-rise jeans"]
+    schedule = []
+    for w in range(1, n_weeks + 1):
+        for kw in keywords:
+            schedule.append((w, kw, count))
+    return _expand(schedule)
+
+
+def generate_mixed_stream(n_weeks: int = 52) -> List[Tuple[int, str]]:
+    """
+    Multi-keyword stream combining several patterns for realistic end-to-end testing.
+    This is the default input for main.py when no CSV is provided.
+    """
+    all_events: List[Tuple[int, str]] = []
+    all_events += generate_burst("Y2K fashion", n_weeks)
+    all_events += generate_gradual("wide-leg jeans", n_weeks)
+    all_events += generate_cyclical("cargo pants", n_weeks)
+    all_events += generate_fading("skinny jeans", n_weeks)
+    all_events += generate_flat("mom jeans", n_weeks)
+    all_events += generate_seasonal("winter boots", n_weeks)
     all_events.sort(key=lambda e: e[0])
     return all_events
 
 
-def generate_scalable_stream(n_events, n_keywords=10):
-    keywords = DEFAULT_KEYWORDS[:n_keywords]
-    return [(i, random.choice(keywords)) for i in range(n_events)]
+# ── Scalability helpers ────────────────────────────────────────────────────────
 
-
-def generate_burst_experiment_data(n_keywords=20, n_true_bursts=5,
-                                   base_range=(5, 30), burst_range=(50, 200)):
-    keywords = [f"trend_{i}" for i in range(n_keywords)]
-    burst_keywords = set(random.sample(keywords, n_true_bursts))
-    previous_freq, current_freq = {}, {}
-    for kw in keywords:
-        prev_count = random.randint(*base_range)
-        previous_freq[kw] = prev_count
-        if kw in burst_keywords:
-            current_freq[kw] = random.randint(*burst_range)
-        else:
-            current_freq[kw] = max(1, prev_count + random.randint(-5, 5))
-    return previous_freq, current_freq, burst_keywords
-
-
-def generate_google_trends_csv(keyword, pattern="burst", weeks=260, output_dir=None):
-    if output_dir is None:
-        output_dir = os.path.join(os.path.dirname(__file__), "google_trends")
-    os.makedirs(output_dir, exist_ok=True)
-    start_date = datetime(2019, 1, 6)
-    rows = []
-    for w in range(weeks):
-        date = start_date + timedelta(weeks=w)
-        frac = w / weeks
-        if pattern == "burst":
-            val = 10 + random.randint(0, 5)
-            if frac > 0.75: val = 60 + random.randint(0, 40)
-        elif pattern == "cyclical":
-            val = max(0, int(50 + 40 * math.sin(2 * math.pi * w / 52)) + random.randint(-5, 5))
-        elif pattern == "fading":
-            val = max(0, int(90 * (1 - frac) + 5) + random.randint(-3, 3))
-        elif pattern == "growing":
-            val = max(0, int(10 + 80 * frac) + random.randint(-3, 3))
-        elif pattern == "flat":
-            val = 30 + random.randint(-5, 5)
-        else:
-            val = random.randint(5, 95)
-        rows.append((date.strftime("%Y-%m-%d"), val))
-    filepath = os.path.join(output_dir, f"{keyword.replace(' ', '_')}.csv")
-    with open(filepath, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(["Week", f"{keyword}: (Worldwide)"])
-        writer.writerows(rows)
-    return filepath
-
-
-def generate_all_google_trends_csvs():
-    keyword_patterns = [
-        ("wide-leg jeans", "growing"), ("skinny jeans", "fading"),
-        ("cargo pants", "cyclical"), ("Y2K fashion", "burst"),
-        ("low-rise jeans", "cyclical"), ("mom jeans", "flat"),
-        ("flared pants", "cyclical"), ("baggy jeans", "burst"),
-        ("corset top", "burst"), ("oversized blazer", "growing"),
-    ]
-    for keyword, pattern in keyword_patterns:
-        path = generate_google_trends_csv(keyword, pattern)
-        print(f"  ✓ {path}")
+def generate_large_stream(
+    n_events: int,
+    n_keywords: int = 10,
+    seed: int = 0,
+    n_weeks: int = 52,
+) -> List[Tuple[int, str]]:
+    """
+    Generate a large random stream for scalability benchmarks.
+    Events are spread across n_weeks weekly timestamps so the pipeline
+    processes at most n_weeks steps regardless of how large n_events is.
+    This mirrors real Google Trends data (many events per week).
+    """
+    rng = random.Random(seed)
+    keywords = [f"kw_{i}" for i in range(n_keywords)]
+    out = []
+    for i in range(n_events):
+        week = (i % n_weeks) + 1
+        out.append((week, rng.choice(keywords)))
+    out.sort(key=lambda e: e[0])
+    return out
 
 
 if __name__ == "__main__":
-    print("Generating Google Trends CSVs...")
-    generate_all_google_trends_csvs()
-    print("\nGenerating mixed synthetic stream...")
+    # Quick sanity check
     stream = generate_mixed_stream()
-    print(f"  ✓ {len(stream)} events")
-    print("\nGenerating burst experiment data...")
-    prev, curr, truth = generate_burst_experiment_data()
-    print(f"  ✓ {len(prev)} keywords, {len(truth)} true bursts")
+    print(f"Mixed stream: {len(stream)} events across "
+          f"{len(set(e[1] for e in stream))} keywords, "
+          f"weeks 1–{max(e[0] for e in stream)}")
