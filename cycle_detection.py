@@ -98,44 +98,53 @@ def classify_trend(keyword, current_freq, prev_freq, burst_score,
     """
     Label a trend as "New", "Cyclical", or "Fading" using simple rules.
 
-    Takes current and previous freq maps, builds a trajectory and
-    computes cosine similarity internally.
+    Takes current and previous freq maps. Uses per-keyword slope and
+    change ratio for classification. Cosine similarity is used via
+    find_best_match() when multi-point historical data is available;
+    for the 2-window pipeline case, ratio-based stability is more
+    discriminating than cosine sim (see report Section 2.7).
 
     Decision order:
-      1. slope is very negative  -> Fading
-      2. high cosine similarity  -> Cyclical (it's come back before)
-      3. high burst + low sim    -> New (never seen this pattern)
-      4. positive slope          -> New (growing)
-      5. default                 -> Fading
+      1. keyword is brand new (not in previous window)  -> New
+      2. slope is very negative (declining fast)         -> Fading
+      3. burst_score above threshold (sudden spike)      -> New
+      4. significant growth (ratio > 1.3)                -> New
+      5. stable frequency (ratio 0.7–1.3, both present)  -> Cyclical
+      6. default                                         -> Fading
     """
-    # build frequency trajectory from the two windows
     curr_val = current_freq.get(keyword, 0) if isinstance(current_freq, dict) else 0
     prev_val = prev_freq.get(keyword, 0) if isinstance(prev_freq, dict) else 0
-    freq_trajectory = [prev_val, curr_val]
 
-    # build vectors from both freq maps for cosine similarity
-    all_keys = sorted(set(current_freq.keys()) | set(prev_freq.keys()))
-    curr_vec = [current_freq.get(k, 0) for k in all_keys]
-    prev_vec = [prev_freq.get(k, 0) for k in all_keys]
-    cosine_sim = cosine_similarity(curr_vec, prev_vec)
+    slope = compute_slope([prev_val, curr_val])
 
-    slope = compute_slope(freq_trajectory)
+    # change ratio: how much did this keyword's frequency change?
+    if prev_val > 0:
+        change_ratio = curr_val / prev_val
+    elif curr_val > 0:
+        change_ratio = float('inf')  # brand new keyword
+    else:
+        change_ratio = 1.0
 
-    # declining fast = fading, check this first
+    # 1. brand new keyword — wasn't in the previous window at all
+    if prev_val == 0 and curr_val > 0:
+        return "New"
+
+    # 2. declining fast = fading
     if slope < decline_threshold:
         return "Fading"
 
-    # strong match to a historical pattern = cyclical
-    if cosine_sim >= cyclical_threshold:
+    # 3. strong burst = new trend
+    if burst_score >= burst_threshold:
+        return "New"
+
+    # 4. significant growth = new (even without burst flag)
+    if change_ratio > 1.3:
+        return "New"
+
+    # 5. present in both windows with stable frequency = cyclical
+    #    (within ±30% — keyword maintained its position)
+    if prev_val > 0 and curr_val > 0 and 0.7 <= change_ratio <= 1.3:
         return "Cyclical"
-
-    # bursting but doesn't match anything we've seen = new trend
-    if burst_score >= burst_threshold and cosine_sim < cyclical_threshold:
-        return "New"
-
-    # still growing even if not bursting
-    if slope > 0:
-        return "New"
 
     return "Fading"
 

@@ -132,11 +132,11 @@ class TestClassify:
         curr = {"retro": 5, "a": 28}
         assert classify_trend("retro", curr, prev, 0.5) == "Fading"
 
-    def test_flat_defaults_to_fading(self):
-        # flat keyword + very different overall pattern -> Fading
+    def test_flat_is_cyclical(self):
+        # flat keyword (30->30, ratio=1.0) with no burst -> Cyclical
         prev = {"neutral": 30, "x": 100}
         curr = {"neutral": 30, "x": 0}
-        assert classify_trend("neutral", curr, prev, 0.8) == "Fading"
+        assert classify_trend("neutral", curr, prev, 0.8) == "Cyclical"
 
     def test_custom_thresholds(self):
         # lowering cyclical_threshold should flip this to Cyclical
