@@ -1,57 +1,44 @@
 """
-run_experiments.py — Scalability Benchmarking Harness (Parvathi / Shravya).
+experiments.py — Scalability Benchmarking Harness.
 
-Runs the four core experiments described in the project proposal:
+Runs four core experiments:
 
   Experiment 1: Sliding Window — Incremental vs Baseline
-    Vary stream size N, compare O(1)-amortised vs O(N)-per-query runtime.
-
   Experiment 2: Top-K — Heap vs Sort
-    Vary M (distinct keywords) and K, compare O(M log K) vs O(M log M).
-
-  Experiment 3: Burst Detection — Ratio vs Difference
-    Inject known bursts, vary threshold, measure true-positive and false-positive rate.
-
+  Experiment 3: Burst Detection — Ratio vs Difference sensitivity
   Experiment 4: End-to-End Pipeline Scalability
-    Vary N, measure total wall-clock time for the full pipeline.
 
-Results are saved to results/ as JSON files that plot_results.py reads.
+Results are saved to experiment_results.json.
 
-Measurement tools used:
+Measurement tools:
   time.perf_counter() — high-resolution wall-clock timer
   tracemalloc         — Python built-in memory profiler
 """
 
 import json
 import os
+import random
 import sys
 import time
 import tracemalloc
-from typing import Dict, List, Tuple
+from collections import deque
+from typing import Dict, List
 
-# Make project root importable
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from src.stubs import (
-    SlidingWindowEngine,
-    recompute_frequencies,
-    top_k_heap,
-    top_k_sort,
-    detect_bursts,
-)
-from data.generate_synthetic import generate_large_stream, generate_burst
+from sliding_window import add_event, get_frequencies, reset_window
+from baseline import compute_baseline
+from top_k import top_k_heap, top_k_sort
+from burst_detection import detect_bursts
+from data.generate_synthetic import generate_large_stream
 
-RESULTS_DIR = os.path.join(os.path.dirname(__file__), "..", "results")
-os.makedirs(RESULTS_DIR, exist_ok=True)
+RESULTS_PATH = os.path.join(os.path.dirname(__file__), "experiment_results.json")
 
 
-# ── Helpers ───────────────────────────────────────────────────────────────────
-
-def _save(name: str, data: dict) -> None:
-    path = os.path.join(RESULTS_DIR, f"{name}.json")
-    with open(path, "w") as f:
-        json.dump(data, f, indent=2)
-    print(f"  Saved → {path}")
+def _save_all(results: dict) -> None:
+    with open(RESULTS_PATH, "w") as f:
+        json.dump(results, f, indent=2)
+    print(f"\n  Results saved → {RESULTS_PATH}")
 
 
 # ── Experiment 1: Sliding Window Scalability ──────────────────────────────────
@@ -59,51 +46,36 @@ def _save(name: str, data: dict) -> None:
 def experiment1_sliding_window(
     stream_sizes: List[int] = None,
     window_size: int = 12,
-    n_keywords: int = 10,
-) -> Dict:
-    """
-    For each stream size N:
-      - INCREMENTAL: feed events one-by-one through SlidingWindowEngine.
-      - BASELINE: after every event call recompute_frequencies() over ALL past events.
-
-    Expected result: incremental runtime ≈ flat (O(N) total / O(1) amortised per event);
-    baseline runtime ≈ quadratic (O(N^2) total / O(N) per query).
-    """
+) -> list:
     if stream_sizes is None:
         stream_sizes = [1_000, 5_000, 10_000, 50_000, 100_000]
 
     print("\n[Experiment 1] Sliding Window: Incremental vs Baseline")
-
-    inc_times, base_times = [], []
+    records = []
 
     for N in stream_sizes:
-        events = generate_large_stream(N, n_keywords)
+        events = generate_large_stream(N, n_keywords=10)
 
-        # ── Incremental ──────────────────────────────────────
-        engine = SlidingWindowEngine(window_size)
+        # Incremental (deque + hash map)
+        reset_window()
         t0 = time.perf_counter()
         for ts, kw in events:
-            engine.process_event(ts, kw)
-        inc_times.append(time.perf_counter() - t0)
+            add_event(ts, kw, window_size)
+        smart_time = time.perf_counter() - t0
+        reset_window()
 
-        # ── Baseline (sample every 50th query to keep runtime tractable) ──
+        # Baseline (query every 50th event to keep tractable)
         t0 = time.perf_counter()
-        for i, (ts, _kw) in enumerate(events):
+        for i, (ts, _) in enumerate(events):
             if i % 50 == 0:
-                recompute_frequencies(events[:i+1], ts, window_size)
-        base_times.append(time.perf_counter() - t0)
+                compute_baseline(events[:i + 1], ts, window_size)
+        naive_time = time.perf_counter() - t0
 
-        print(f"  N={N:>7}  incremental={inc_times[-1]*1000:7.1f}ms  "
-              f"baseline={base_times[-1]*1000:7.1f}ms")
+        records.append({"n": N, "naive_time": naive_time, "smart_time": smart_time})
+        print(f"  N={N:>7,}  naive={naive_time*1000:>9.1f}ms  smart={smart_time*1000:>7.1f}ms  "
+              f"speedup={naive_time/max(smart_time, 1e-9):,.0f}x")
 
-    result = {
-        "stream_sizes": stream_sizes,
-        "incremental_ms": [t * 1000 for t in inc_times],
-        "baseline_ms":    [t * 1000 for t in base_times],
-        "window_size": window_size,
-    }
-    _save("exp1_sliding_window", result)
-    return result
+    return records
 
 
 # ── Experiment 2: Top-K Heap vs Sort ─────────────────────────────────────────
@@ -111,14 +83,7 @@ def experiment1_sliding_window(
 def experiment2_topk(
     m_values: List[int] = None,
     k_values: List[int] = None,
-) -> Dict:
-    """
-    For each (M, K) combination:
-      Build a synthetic freq_map with M distinct keywords.
-      Time top_k_heap() vs top_k_sort().
-
-    Expected result: heap wins when K << M; they converge as K → M.
-    """
+) -> tuple:
     if m_values is None:
         m_values = [50, 100, 500, 1_000, 5_000]
     if k_values is None:
@@ -126,150 +91,175 @@ def experiment2_topk(
 
     print("\n[Experiment 2] Top-K: Heap vs Sort")
 
-    records = []
-    import random
-    rng = random.Random(99)
+    rng = random.Random(42)
+    vary_m_records = []
+    vary_k_records = []
 
+    # 2a: vary M, fix K=5
+    K_FIXED = 5
     for M in m_values:
-        freq_map = {f"kw_{i}": rng.randint(1, 1000) for i in range(M)}
-        for K in k_values:
-            if K > M:
-                continue
+        freq_map = {f"kw_{i}": rng.randint(1, 10_000) for i in range(M)}
 
-            # Heap
-            t0 = time.perf_counter()
-            for _ in range(200):      # repeat 200× for timing precision
-                top_k_heap(freq_map, K)
-            heap_ms = (time.perf_counter() - t0) / 200 * 1000
+        t0 = time.perf_counter()
+        for _ in range(200):
+            top_k_heap(freq_map, K_FIXED)
+        heap_time = (time.perf_counter() - t0) / 200
 
-            # Sort
-            t0 = time.perf_counter()
-            for _ in range(200):
-                top_k_sort(freq_map, K)
-            sort_ms = (time.perf_counter() - t0) / 200 * 1000
+        t0 = time.perf_counter()
+        for _ in range(200):
+            top_k_sort(freq_map, K_FIXED)
+        sort_time = (time.perf_counter() - t0) / 200
 
-            records.append({"M": M, "K": K, "heap_ms": round(heap_ms, 4),
-                             "sort_ms": round(sort_ms, 4)})
-            print(f"  M={M:>5}  K={K:>4}  heap={heap_ms:.4f}ms  sort={sort_ms:.4f}ms")
+        vary_m_records.append({"m": M, "heap_time": heap_time, "sort_time": sort_time})
+        print(f"  M={M:>5}  K={K_FIXED}  heap={heap_time*1e6:.1f}μs  sort={sort_time*1e6:.1f}μs")
 
-    result = {"records": records, "m_values": m_values, "k_values": k_values}
-    _save("exp2_topk", result)
-    return result
+    # 2b: vary K, fix M=1000
+    M_FIXED = 1_000
+    freq_map = {f"kw_{i}": rng.randint(1, 10_000) for i in range(M_FIXED)}
+    for K in k_values:
+        if K > M_FIXED:
+            continue
+
+        t0 = time.perf_counter()
+        for _ in range(200):
+            top_k_heap(freq_map, K)
+        heap_time = (time.perf_counter() - t0) / 200
+
+        t0 = time.perf_counter()
+        for _ in range(200):
+            top_k_sort(freq_map, K)
+        sort_time = (time.perf_counter() - t0) / 200
+
+        vary_k_records.append({"k": K, "heap_time": heap_time, "sort_time": sort_time})
+        print(f"  M={M_FIXED}  K={K:>4}  heap={heap_time*1e6:.1f}μs  sort={sort_time*1e6:.1f}μs")
+
+    return vary_m_records, vary_k_records
 
 
 # ── Experiment 3: Burst Detection Sensitivity ─────────────────────────────────
 
-def experiment3_burst_sensitivity(
-    thresholds: List[float] = None,
+def experiment3_burst(
     n_true_bursts: int = 5,
     background: int = 3,
     spike_height: int = 60,
-) -> Dict:
-    """
-    Inject `n_true_bursts` known burst keywords into a stream of non-bursting keywords.
-    For each threshold and each scoring method (ratio / difference):
-      - Count true positives detected.
-      - Count false positives from the non-bursting keywords.
-
-    Expected result: ratio method catches proportional spikes better at low thresholds;
-    difference method scales with absolute magnitude.
-    """
-    if thresholds is None:
-        thresholds = [1.5, 2.0, 3.0, 5.0, 8.0, 10.0]
+) -> dict:
+    ratio_thresholds = [1.0, 1.5, 2.0, 2.5, 3.0, 4.0, 5.0, 7.0, 10.0]
+    diff_thresholds = [5, 10, 15, 20, 30, 50, 75, 100, 150]
 
     print("\n[Experiment 3] Burst Detection: Ratio vs Difference sensitivity")
 
-    # Build current and previous freq_map with injected bursts
+    # Build freq maps with injected bursts
     n_background = 20
     prev_freq = {f"bg_{i}": background for i in range(n_background)}
-    curr_freq = {f"bg_{i}": background + 1 for i in range(n_background)}   # tiny change
+    curr_freq = {f"bg_{i}": background + 1 for i in range(n_background)}
 
-    true_keywords = [f"burst_{i}" for i in range(n_true_bursts)]
-    for kw in true_keywords:
+    true_keywords = set()
+    for i in range(n_true_bursts):
+        kw = f"burst_{i}"
+        true_keywords.add(kw)
         prev_freq[kw] = background
         curr_freq[kw] = spike_height
 
-    records = []
-    for method in ("ratio", "difference"):
-        for thresh in thresholds:
-            detected = detect_bursts(curr_freq, prev_freq, k=len(curr_freq),
-                                     threshold=thresh, method=method)
-            det_kws = {kw for kw, _ in detected}
-            tp = sum(1 for kw in true_keywords if kw in det_kws)
-            fp = sum(1 for kw in det_kws if kw not in true_keywords)
-            records.append({
-                "method": method, "threshold": thresh,
-                "true_positives": tp, "false_positives": fp,
-                "total_detected": len(det_kws),
-            })
-            print(f"  method={method:<12}  thresh={thresh:5.1f}  "
-                  f"TP={tp}  FP={fp}")
+    total_non_burst = len(prev_freq) - n_true_bursts
 
-    result = {
-        "records": records,
-        "thresholds": thresholds,
-        "n_true_bursts": n_true_bursts,
+    ratio_results = []
+    for t in ratio_thresholds:
+        detected = detect_bursts(curr_freq, prev_freq, threshold=t, method="ratio")
+        det_kws = {kw for kw, _ in detected}
+        tp = len(det_kws & true_keywords)
+        fp = len(det_kws - true_keywords)
+        ratio_results.append({
+            "threshold": t, "true_positives": tp, "false_positives": fp,
+            "detection_rate": tp / n_true_bursts,
+            "false_positive_rate": fp / max(total_non_burst, 1),
+        })
+        print(f"  ratio   thresh={t:5.1f}  TP={tp}  FP={fp}")
+
+    diff_results = []
+    for t in diff_thresholds:
+        detected = detect_bursts(curr_freq, prev_freq, threshold=t, method="difference")
+        det_kws = {kw for kw, _ in detected}
+        tp = len(det_kws & true_keywords)
+        fp = len(det_kws - true_keywords)
+        diff_results.append({
+            "threshold": t, "true_positives": tp, "false_positives": fp,
+            "detection_rate": tp / n_true_bursts,
+            "false_positive_rate": fp / max(total_non_burst, 1),
+        })
+        print(f"  diff    thresh={t:5}  TP={tp}  FP={fp}")
+
+    return {
+        "ratio_results": ratio_results,
+        "difference_results": diff_results,
+        "ground_truth": list(true_keywords),
     }
-    _save("exp3_burst", result)
-    return result
 
 
-# ── Experiment 4: End-to-End Pipeline Memory + Runtime ───────────────────────
+# ── Experiment 4: End-to-End Pipeline ─────────────────────────────────────────
 
-def experiment4_end_to_end(
+def experiment4_pipeline(
     stream_sizes: List[int] = None,
-    window_size: int = 12,
+    window_size: int = 1000,
     k: int = 5,
-) -> Dict:
-    """
-    For each stream size N, run the full pipeline and measure:
-      - Wall-clock total runtime.
-      - Peak memory usage (tracemalloc).
-    """
+) -> list:
     if stream_sizes is None:
         stream_sizes = [1_000, 5_000, 10_000, 50_000]
 
     print("\n[Experiment 4] End-to-End Pipeline Scalability")
-
-    # Import run_pipeline — we only import once here to avoid circular issues
-    from src.main import run_pipeline
-
-    runtimes, memories = [], []
+    records = []
 
     for N in stream_sizes:
         events = generate_large_stream(N, n_keywords=10)
 
         tracemalloc.start()
         t0 = time.perf_counter()
-        run_pipeline(events, accessibility_db={}, window_size=window_size, k=k, verbose=False)
+
+        # Run inline pipeline (window + top-k + burst)
+        window = deque()
+        freq = {}
+        prev_freq = {}
+        for i, (t, kw) in enumerate(events):
+            window.append((t, kw))
+            freq[kw] = freq.get(kw, 0) + 1
+            while window and window[0][0] <= t - window_size:
+                _, old_kw = window.popleft()
+                freq[old_kw] -= 1
+                if freq[old_kw] == 0:
+                    del freq[old_kw]
+            if i % 100 == 0 and i > 0:
+                top_k_heap(dict(freq), k)
+                detect_bursts(dict(freq), prev_freq, threshold=2.0, method="ratio")
+                prev_freq = dict(freq)
+
         elapsed = time.perf_counter() - t0
         _, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
 
-        runtimes.append(elapsed * 1000)
-        memories.append(peak / 1024)   # KB
-        print(f"  N={N:>7}  time={elapsed*1000:8.1f}ms  peak_mem={peak/1024:.1f}KB")
+        records.append({"n": N, "pipeline_time": elapsed})
+        print(f"  N={N:>7,}  time={elapsed*1000:>8.1f}ms  peak_mem={peak/1024:.1f}KB")
 
-    result = {
-        "stream_sizes": stream_sizes,
-        "runtime_ms": runtimes,
-        "memory_kb": memories,
-    }
-    _save("exp4_e2e", result)
-    return result
+    return records
 
 
 # ── Run all ───────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     print("=" * 60)
-    print("CS5800 — Scalability Experiments (Parvathi / Shravya)")
+    print("CS 5800 — Scalability Experiments")
     print("=" * 60)
 
     r1 = experiment1_sliding_window()
-    r2 = experiment2_topk()
-    r3 = experiment3_burst_sensitivity()
-    r4 = experiment4_end_to_end()
+    r2_m, r2_k = experiment2_topk()
+    r3 = experiment3_burst()
+    r4 = experiment4_pipeline()
 
-    print("\n✓ All experiments complete. Results saved to results/")
-    print("  Run:  python experiments/plot_results.py")
+    all_results = {
+        "sliding_window": r1,
+        "top_k_vary_m": r2_m,
+        "top_k_vary_k": r2_k,
+        "burst_detection": r3,
+        "pipeline": r4,
+    }
+    _save_all(all_results)
+
+    print("\nAll experiments complete.")
