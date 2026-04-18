@@ -15,7 +15,7 @@ HOW TO USE:
 import sys, os, csv, random
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 from flask_cors import CORS
 
 # ── Import YOUR real modules ───────────────────────────────────────────────────
@@ -60,6 +60,10 @@ CSV_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
 app = Flask(__name__)
 CORS(app)
 
+@app.route('/')
+def serve_ui():
+    return send_from_directory('.', 'index.html')
+  
 WINDOW_EVENT_MAP = {4: 400, 8: 800, 12: 1500, 26: 3000, 52: 6000}
 
 
