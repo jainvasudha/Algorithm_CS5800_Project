@@ -1,19 +1,18 @@
 """
-plot_results.py — Visualisation (Parvathi / Shravya).
+plots.py — Visualisation.
 
-Reads JSON result files from results/ and produces 5 publication-quality plots:
+Reads experiment_results.json and produces 5 publication-quality plots:
 
-  Plot 1  (exp1)  — Incremental vs Baseline runtime   (line chart)
-  Plot 2  (exp2)  — Heap vs Sort Top-K runtime        (line chart, K=5 slice)
-  Plot 3  (exp3)  — Burst detection: TP and FP vs threshold (line chart, both methods)
-  Plot 4  (exp4)  — End-to-end pipeline runtime       (log-log line chart)
-  Plot 5  (exp4)  — Peak memory usage vs stream size  (line chart)
+  Plot 1  — Incremental vs Baseline runtime     (line chart)
+  Plot 2  — Heap vs Sort Top-K runtime           (line chart, K=5 fixed)
+  Plot 3  — Burst detection: detection rate vs threshold (line chart, both methods)
+  Plot 4  — End-to-end pipeline runtime          (line chart)
+  Plot 5  — Top-K vary K convergence             (line chart, M=1000 fixed)
 
-Output: results/plots/ directory (PNG, 300 dpi).
+Output: plots/ directory (PNG, 300 dpi).
 
 Library used: matplotlib 3.7+
-  matplotlib.pyplot — standard 2-D plotting API
-  Reference: https://matplotlib.org/stable/api/pyplot_api.html
+  Reference: Hunter, J.D. (2007). Computing in Science & Engineering, 9(3).
 """
 
 import json
@@ -21,23 +20,19 @@ import os
 import sys
 
 import matplotlib
-matplotlib.use("Agg")           # non-interactive backend (safe on any machine)
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-BASE = os.path.join(os.path.dirname(__file__), "..", "results")
-PLOT_DIR = os.path.join(BASE, "plots")
+RESULTS_PATH = os.path.join(os.path.dirname(__file__), "experiment_results.json")
+PLOT_DIR = os.path.join(os.path.dirname(__file__), "plots")
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 
-def _load(name: str) -> dict:
-    path = os.path.join(BASE, f"{name}.json")
-    if not os.path.exists(path):
-        raise FileNotFoundError(
-            f"Result file not found: {path}\n"
-            f"Run:  python experiments/run_experiments.py  first."
-        )
-    with open(path) as f:
+def _load() -> dict:
+    if not os.path.exists(RESULTS_PATH):
+        print(f"Error: {RESULTS_PATH} not found. Run 'python experiments.py' first.")
+        sys.exit(1)
+    with open(RESULTS_PATH) as f:
         return json.load(f)
 
 
@@ -50,140 +45,139 @@ def _save_plot(name: str) -> None:
 
 # ── Plot 1: Sliding Window — Incremental vs Baseline ─────────────────────────
 
-def plot1_sliding_window() -> None:
-    data = _load("exp1_sliding_window")
-    sizes = data["stream_sizes"]
-    inc   = data["incremental_ms"]
-    base  = data["baseline_ms"]
+def plot1_sliding_window(data: dict) -> None:
+    records = data["sliding_window"]
+    sizes = [r["n"] for r in records]
+    naive = [r["naive_time"] for r in records]
+    smart = [r["smart_time"] for r in records]
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(sizes, inc,  marker="o", linewidth=2, label="Incremental (O(N) total)")
-    ax.plot(sizes, base, marker="s", linewidth=2, linestyle="--",
-            label="Baseline recomputation (O(N²) total)")
-    ax.set_xlabel("Stream Size (N)", fontsize=12)
-    ax.set_ylabel("Total Runtime (ms)", fontsize=12)
-    ax.set_title("Experiment 1: Sliding Window — Incremental vs Baseline", fontsize=13)
+    ax.plot(sizes, smart, marker="o", linewidth=2, color="green",
+            label="Incremental — O(N) total")
+    ax.plot(sizes, naive, marker="s", linewidth=2, color="red", linestyle="--",
+            label="Naive — O(N²) total")
+    ax.set_xlabel("Stream Size (N events)", fontsize=12)
+    ax.set_ylabel("Total Runtime (seconds)", fontsize=12)
+    ax.set_title("Experiment 1: Sliding Window — Incremental vs Naive", fontsize=13)
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
     _save_plot("plot1_sliding_window")
 
 
-# ── Plot 2: Top-K — Heap vs Sort (K=5 slice) ─────────────────────────────────
+# ── Plot 2: Top-K — Heap vs Sort (vary M, K=5 fixed) ────────────────────────
 
-def plot2_topk() -> None:
-    data = _load("exp2_topk")
-    records = data["records"]
-
-    # Slice where K=5
-    k_fixed = 5
-    rows = [r for r in records if r["K"] == k_fixed]
-    if not rows:
-        # Fall back to smallest K available
-        k_fixed = min(r["K"] for r in records)
-        rows = [r for r in records if r["K"] == k_fixed]
-
-    M_vals  = [r["M"] for r in rows]
-    heap_ms = [r["heap_ms"] for r in rows]
-    sort_ms = [r["sort_ms"] for r in rows]
+def plot2_topk_vary_m(data: dict) -> None:
+    records = data["top_k_vary_m"]
+    M_vals = [r["m"] for r in records]
+    heap = [r["heap_time"] * 1000 for r in records]   # convert to ms
+    sort = [r["sort_time"] * 1000 for r in records]
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(M_vals, heap_ms, marker="o", linewidth=2, label=f"Heap Top-K  (K={k_fixed})")
-    ax.plot(M_vals, sort_ms, marker="s", linewidth=2, linestyle="--",
-            label=f"Full Sort   (K={k_fixed})")
-    ax.set_xlabel("Number of Distinct Keywords (M)", fontsize=12)
+    ax.plot(M_vals, heap, marker="o", linewidth=2, color="purple",
+            label="Heap — O(M log K), K=5")
+    ax.plot(M_vals, sort, marker="s", linewidth=2, color="red", linestyle="--",
+            label="Sort — O(M log M)")
+    ax.set_xlabel("Vocabulary Size M (distinct keywords)", fontsize=12)
     ax.set_ylabel("Runtime per call (ms)", fontsize=12)
-    ax.set_title(f"Experiment 2: Top-K Heap vs Sort (K={k_fixed})", fontsize=13)
+    ax.set_title("Experiment 2a: Top-K Heap vs Sort (K=5 fixed)", fontsize=13)
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    _save_plot("plot2_topk")
+    _save_plot("plot2_topk_vary_m")
 
 
-# ── Plot 3: Burst Detection — TP and FP vs Threshold ─────────────────────────
+# ── Plot 3: Burst Detection — Detection Rate vs Threshold ────────────────────
 
-def plot3_burst() -> None:
-    data = _load("exp3_burst")
-    records   = data["records"]
-    thresholds = data["thresholds"]
-    n_true    = data["n_true_bursts"]
+def plot3_burst(data: dict) -> None:
+    burst = data["burst_detection"]
 
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5))
 
-    for method, ax in zip(("ratio", "difference"), axes):
-        rows = [r for r in records if r["method"] == method]
-        tp_vals = [r["true_positives"]  for r in rows]
-        fp_vals = [r["false_positives"] for r in rows]
-        t_vals  = [r["threshold"]       for r in rows]
+    # Ratio method
+    ratio = burst["ratio_results"]
+    ax = axes[0]
+    ax.plot([r["threshold"] for r in ratio], [r["detection_rate"] for r in ratio],
+            marker="o", linewidth=2, color="steelblue", label="Detection rate")
+    ax.plot([r["threshold"] for r in ratio], [r["false_positive_rate"] for r in ratio],
+            marker="s", linewidth=2, color="salmon", linestyle="--", label="False positive rate")
+    ax.set_xlabel("Threshold", fontsize=11)
+    ax.set_ylabel("Rate", fontsize=11)
+    ax.set_title("Ratio Scoring", fontsize=12)
+    ax.set_ylim(-0.05, 1.1)
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
 
-        ax.plot(t_vals, tp_vals, marker="o", linewidth=2, color="steelblue",
-                label="True Positives (max={})".format(n_true))
-        ax.plot(t_vals, fp_vals, marker="s", linewidth=2, color="salmon",
-                linestyle="--", label="False Positives")
-        ax.axhline(y=n_true, color="gray", linestyle=":", linewidth=1, label="Ground-truth count")
-        ax.set_xlabel("Burst Threshold", fontsize=11)
-        ax.set_ylabel("Count", fontsize=11)
-        ax.set_title(f"Burst Detection — {method.capitalize()} Scoring", fontsize=12)
-        ax.legend(fontsize=9)
-        ax.grid(True, alpha=0.3)
+    # Difference method
+    diff = burst["difference_results"]
+    ax = axes[1]
+    ax.plot([r["threshold"] for r in diff], [r["detection_rate"] for r in diff],
+            marker="o", linewidth=2, color="steelblue", label="Detection rate")
+    ax.plot([r["threshold"] for r in diff], [r["false_positive_rate"] for r in diff],
+            marker="s", linewidth=2, color="salmon", linestyle="--", label="False positive rate")
+    ax.set_xlabel("Threshold", fontsize=11)
+    ax.set_ylabel("Rate", fontsize=11)
+    ax.set_title("Difference Scoring", fontsize=12)
+    ax.set_ylim(-0.05, 1.1)
+    ax.legend(fontsize=9)
+    ax.grid(True, alpha=0.3)
 
     fig.suptitle("Experiment 3: Burst Detection Sensitivity", fontsize=14, y=1.01)
     fig.tight_layout()
-    _save_plot("plot3_burst")
+    _save_plot("plot3_burst_sensitivity")
 
 
-# ── Plot 4: End-to-End Runtime (log-log) ─────────────────────────────────────
+# ── Plot 4: End-to-End Pipeline Runtime ──────────────────────────────────────
 
-def plot4_e2e_runtime() -> None:
-    data    = _load("exp4_e2e")
-    sizes   = data["stream_sizes"]
-    runtime = data["runtime_ms"]
-
-    fig, ax = plt.subplots(figsize=(8, 5))
-    ax.loglog(sizes, runtime, marker="D", linewidth=2, color="darkorchid",
-              label="Full pipeline runtime")
-    ax.set_xlabel("Stream Size (N)", fontsize=12)
-    ax.set_ylabel("Total Runtime (ms)  [log scale]", fontsize=12)
-    ax.set_title("Experiment 4: End-to-End Pipeline Scalability (log-log)", fontsize=13)
-    ax.legend(fontsize=10)
-    ax.grid(True, which="both", alpha=0.3)
-    fig.tight_layout()
-    _save_plot("plot4_e2e_runtime")
-
-
-# ── Plot 5: Peak Memory Usage ─────────────────────────────────────────────────
-
-def plot5_memory() -> None:
-    data   = _load("exp4_e2e")
-    sizes  = data["stream_sizes"]
-    memory = data["memory_kb"]
+def plot4_pipeline(data: dict) -> None:
+    records = data["pipeline"]
+    sizes = [r["n"] for r in records]
+    times = [r["pipeline_time"] for r in records]
 
     fig, ax = plt.subplots(figsize=(8, 5))
-    ax.plot(sizes, memory, marker="^", linewidth=2, color="seagreen",
-            label="Peak memory (KB)")
-    ax.set_xlabel("Stream Size (N)", fontsize=12)
-    ax.set_ylabel("Peak Memory (KB)", fontsize=12)
-    ax.set_title("Experiment 4b: Peak Memory vs Stream Size", fontsize=13)
+    ax.plot(sizes, times, marker="D", linewidth=2, color="darkorchid",
+            label="Full pipeline runtime")
+    ax.set_xlabel("Stream Size (N events)", fontsize=12)
+    ax.set_ylabel("Total Runtime (seconds)", fontsize=12)
+    ax.set_title("Experiment 4: End-to-End Pipeline Scalability", fontsize=13)
     ax.legend(fontsize=10)
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
-    _save_plot("plot5_memory")
+    _save_plot("plot4_pipeline")
 
 
-# ── Entry point ───────────────────────────────────────────────────────────────
+# ── Plot 5: Top-K — Vary K convergence (M=1000 fixed) ───────────────────────
+
+def plot5_topk_vary_k(data: dict) -> None:
+    records = data["top_k_vary_k"]
+    K_vals = [r["k"] for r in records]
+    heap = [r["heap_time"] * 1000 for r in records]
+    sort = [r["sort_time"] * 1000 for r in records]
+
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.plot(K_vals, heap, marker="o", linewidth=2, color="purple",
+            label="Heap — O(M log K)")
+    ax.plot(K_vals, sort, marker="s", linewidth=2, color="red", linestyle="--",
+            label="Sort — O(M log M)")
+    ax.set_xlabel("K (results requested)", fontsize=12)
+    ax.set_ylabel("Runtime per call (ms)", fontsize=12)
+    ax.set_title("Experiment 2b: Top-K Convergence as K → M (M=1000)", fontsize=13)
+    ax.legend(fontsize=10)
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    _save_plot("plot5_topk_vary_k")
+
+
+# ── Entry point ──────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    print("Generating all plots …")
-    failed = []
-    for fn in (plot1_sliding_window, plot2_topk, plot3_burst,
-               plot4_e2e_runtime, plot5_memory):
-        try:
-            fn()
-        except FileNotFoundError as e:
-            print(f"  [SKIP] {e}")
-            failed.append(fn.__name__)
+    print("Generating all plots...")
+    data = _load()
 
-    if failed:
-        print(f"\n  Skipped {len(failed)} plot(s) — run run_experiments.py first.")
-    else:
-        print(f"\n✓ All 5 plots saved to results/plots/")
+    plot1_sliding_window(data)
+    plot2_topk_vary_m(data)
+    plot3_burst(data)
+    plot4_pipeline(data)
+    plot5_topk_vary_k(data)
+
+    print(f"\nAll 5 plots saved to {PLOT_DIR}/")
