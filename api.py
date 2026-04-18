@@ -80,7 +80,7 @@ def classify_fallback(kw, current_freq, prev_freq, burst_score):
     if curr > prev * 1.5:      return "New"
     if curr < prev * 0.7:      return "Fading"
     if burst_score > 2.0:      return "Cyclical"
-    return "Stable"
+    return "Fading"
 
 
 @app.route('/api/detect', methods=['GET'])
