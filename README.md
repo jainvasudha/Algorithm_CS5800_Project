@@ -152,9 +152,9 @@ Project/
 
 | Member | Role | Key Files |
 |---|---|---|
-| **Bhoomika Panday** | Sliding Window Engine | `stream_simulator.py`, `sliding_window.py`, `baseline.py`, `compare.py` |
+| **Bhoomika Panday** | Sliding Window Engine & Web API | `stream_simulator.py`, `sliding_window.py`, `baseline.py`, `compare.py`, `api.py` |
 | **Vasudha Jain** | Ranking & Classification | `top_k.py`, `burst_detection.py`, `cycle_detection.py` |
-| **Parvathi Gottumukkala** | Integration & Experiments | `main.py`, `accessibility.py`, `experiments.py`, `plots.py`, `api.py` |
+| **Parvathi Gottumukkala** | Integration & Experiments | `main.py`, `accessibility.py`, `experiments.py`, `plots.py` |
 
 ---
 
