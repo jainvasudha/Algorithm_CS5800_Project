@@ -19,7 +19,7 @@ import json
 import os
 from typing import Dict, List, Optional, Tuple
 
-from src.config import ACCESSIBILITY_WEIGHTS, ACCESSIBILITY_RANGES
+from config import ACCESSIBILITY_WEIGHTS, ACCESSIBILITY_RANGES
 
 
 # ── Normalisation helper ───────────────────────────────────────────────────────

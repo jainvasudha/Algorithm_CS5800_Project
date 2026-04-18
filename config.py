@@ -12,8 +12,12 @@ DEFAULT_WINDOW_SIZE = 12        # 12 time-steps (weeks) per window
 DEFAULT_K = 5                   # how many top trends to surface
 
 # ── Burst Detection ────────────────────────────────────────────────────
-BURST_THRESHOLD = 2.0           # ratio >= 2.0  →  frequency at least doubled
-BURST_METHOD    = "ratio"       # "ratio" | "difference"
+BURST_THRESHOLD       = 2.0     # ratio >= 2.0  →  frequency at least doubled
+BURST_METHOD          = "ratio" # "ratio" | "difference"
+# Aliases used by Vasudha's burst_detection.py
+BURST_THRESHOLD_RATIO = 2.0
+BURST_THRESHOLD_DIFF  = 10
+DEFAULT_BURST_METHOD  = "ratio"
 
 # ── Cycle Classification ───────────────────────────────────────────────
 CYCLICAL_SIMILARITY_THRESHOLD = 0.75

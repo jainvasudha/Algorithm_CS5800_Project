@@ -8,7 +8,7 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import pytest
-from src.accessibility import (
+from accessibility import (
     compute_accessibility_score,
     rank_by_accessibility,
     _normalise,
