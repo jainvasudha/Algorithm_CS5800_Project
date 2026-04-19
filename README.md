@@ -71,6 +71,25 @@ python -m pytest tests/ -v
 
 ---
 
+## Experiment Results
+
+### Experiment 1 — Sliding Window: Incremental vs Naive
+![Sliding Window](plots/plot1_sliding_window.png)
+
+### Experiment 2a — Top-K: Heap vs Sort (vary M, K=5 fixed)
+![Top-K Heap vs Sort](plots/plot2_topk_vary_m.png)
+
+### Experiment 2b — Top-K: Convergence as K → M
+![Top-K Convergence](plots/plot5_topk_vary_k.png)
+
+### Experiment 3 — Burst Detection: Ratio vs Difference Sensitivity
+![Burst Detection](plots/plot3_burst_sensitivity.png)
+
+### Experiment 4 — End-to-End Pipeline Scalability
+![Pipeline Scalability](plots/plot4_pipeline.png)
+
+---
+
 ## Algorithms and CS 5800 Topics
 
 | # | Algorithm | Approach | Time | CS 5800 Topic |
