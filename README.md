@@ -6,8 +6,6 @@
 
 **Report:** `ReportGottumukkalaJainPanday.pdf`
 
-**Live Demo:** [delicate-dango-9dd344.netlify.app](https://delicate-dango-9dd344.netlify.app/)
-
 ---
 
 ## What This Project Does
@@ -111,7 +109,6 @@ Synthetic data with known ground-truth patterns is also generated via `data/gene
 ```
 Project/
 ├── main.py                       # Entry point — connects all modules
-├── api.py                        # Flask backend for the web demo
 ├── stream_simulator.py           # CSV → streaming events
 ├── sliding_window.py             # Incremental frequency counting (deque + hash map)
 ├── baseline.py                   # Naive full-scan (for comparison)
@@ -143,7 +140,7 @@ Project/
 
 | Member | Role | Key Files |
 |---|---|---|
-| **Bhoomika Panday** | Sliding Window Engine & Web API | `stream_simulator.py`, `sliding_window.py`, `baseline.py`, `compare.py`, `api.py` |
+| **Bhoomika Panday** | Sliding Window Engine | `stream_simulator.py`, `sliding_window.py`, `baseline.py`, `compare.py` |
 | **Vasudha Jain** | Ranking & Classification | `top_k.py`, `burst_detection.py`, `cycle_detection.py` |
 | **Parvathi Gottumukkala** | Integration & Experiments | `main.py`, `accessibility.py`, `experiments.py`, `plots.py` |
 
