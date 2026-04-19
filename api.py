@@ -346,4 +346,4 @@ if __name__ == '__main__':
     print("  Server → http://localhost:5000")
     print("  Open index.html in your browser")
     print("=" * 55)
-    app.run(port=5000, debug=True)
+    app.run(port=8080, debug=True)
