@@ -65,16 +65,7 @@ This produces 3 performance comparison charts:
 - Plot 2: Top-K — heap vs sort runtime (M = 50 to 5,000)
 - Plot 3: Burst detection — ratio vs difference detection rate across thresholds
 
-### Step 4 — Run the web demo (optional)
-
-```bash
-pip install flask flask-cors
-python api.py
-```
-
-Then open the website at [delicate-dango-9dd344.netlify.app](https://delicate-dango-9dd344.netlify.app/) or serve `index.html` locally.
-
-### Step 5 — Run all tests
+### Step 4 — Run all tests
 
 ```bash
 python -m pytest tests/ -v
@@ -127,7 +118,7 @@ Project/
 ├── compare.py                    # Validates optimized output matches baseline
 ├── top_k.py                      # Heap-based + sort-based Top-K selection
 ├── burst_detection.py            # Ratio + difference burst scoring
-├── cycle_detection.py            # Cosine similarity + trend classifier
+├── cycle_detection.py            # Trend lifecycle classifier (New/Cyclical/Fading)
 ├── accessibility.py              # Weighted multi-criteria scoring + heap ranking
 ├── experiments.py                # Benchmarking harness (timing + memory)
 ├── plots.py                      # matplotlib charts for experiments
@@ -162,4 +153,7 @@ Project/
 
 1. Cormen, T. H., Leiserson, C. E., Rivest, R. L., & Stein, C. (2022). *Introduction to Algorithms* (4th ed.). MIT Press.
 2. Hunter, J. D. (2007). Matplotlib: A 2D graphics environment. *Computing in Science & Engineering*, 9(3), 90–95.
-3. Google LLC. (2024). Google Trends. https://trends.google.com
+3. Krekel, H. et al. (2004). pytest. https://pytest.org
+4. Python Software Foundation. (2024). Python Standard Library. https://docs.python.org/3/library/
+5. Google LLC. (2024). Google Trends. https://trends.google.com
+6. Miller, B., & Ranum, D. (2013). *Problem Solving with Algorithms and Data Structures Using Python*. Franklin, Beedle & Associates.
