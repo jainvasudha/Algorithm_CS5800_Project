@@ -83,7 +83,7 @@ def generate_cyclical(
 ) -> List[Tuple[int, str]]:
     """
     Alternates between high and low every `period` weeks.
-    Ground truth: cosine similarity with historical half ≈ high.
+    Ground truth: recurring pattern — should be classified as Cyclical.
     """
     schedule = []
     for w in range(1, n_weeks + 1):
