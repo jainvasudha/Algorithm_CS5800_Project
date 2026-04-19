@@ -1,5 +1,5 @@
 """
-plots.py — Visualisation.
+plots.py — Visualisation (Parvathi).
 
 Reads experiment_results.json and produces 5 publication-quality plots:
 

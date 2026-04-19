@@ -1,5 +1,5 @@
 """
-experiments.py — Scalability Benchmarking Harness.
+experiments.py — Scalability Benchmarking Harness (Parvathi).
 
 Runs four core experiments:
 
